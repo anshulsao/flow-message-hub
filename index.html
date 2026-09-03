@@ -39,6 +39,7 @@
   }
 
   *{box-sizing:border-box;}
+  [hidden]{display:none!important;}
   html,body{height:100%;margin:0;overflow:hidden;}
   body{
     background:var(--bg);color:var(--ink);
@@ -153,6 +154,59 @@
   .c-wait{font-family:"IBM Plex Mono",monospace;font-size:10.5px;color:var(--faint);}
   .feed-empty{color:var(--faint);text-align:center;padding:40px 20px;font-family:"IBM Plex Mono",monospace;font-size:12px;}
 
+  /* ---------------- tabs + inbox ---------------- */
+  .panel-tabs{display:flex;gap:2px;padding:8px 10px 0;border-bottom:1px solid var(--panel-line);background:var(--panel-2);}
+  .tab{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:10px 8px;border:none;background:transparent;color:var(--muted);font:600 12.5px "IBM Plex Sans",sans-serif;letter-spacing:.02em;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;}
+  .tab:hover{color:var(--ink);}
+  .tab.active{color:var(--ink);border-bottom-color:var(--session);}
+  .tab .live-dot{width:7px;height:7px;border-radius:50%;background:var(--urgent);box-shadow:0 0 8px var(--urgent);}
+  .tab .c{font-family:"IBM Plex Mono",monospace;font-size:10.5px;color:var(--faint);font-weight:500;}
+  .tab .badge{min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--urgent);color:#fff;font:700 11px "IBM Plex Mono",monospace;display:inline-flex;align-items:center;justify-content:center;}
+  .tab .badge.calm{background:var(--delivered);}
+  .panel-body{position:relative;min-height:0;display:grid;}
+  .panel-body>div{grid-area:1/1;min-height:0;}
+  .inbox{min-height:0;display:grid;}
+  .inbox>*{min-height:0;}
+  .inbox-list{overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:9px;scrollbar-width:thin;}
+  .inbox-list::-webkit-scrollbar{width:8px;}.inbox-list::-webkit-scrollbar-thumb{background:var(--panel-line);border-radius:4px;}
+  .inbox-empty{color:var(--faint);text-align:center;padding:40px 20px;font-family:"IBM Plex Mono",monospace;font-size:12px;}
+
+  .tcard{position:relative;text-align:left;padding:11px 13px 11px 15px;border-radius:11px;background:var(--panel);border:1px solid var(--panel-line);box-shadow:var(--shadow);cursor:pointer;}
+  .tcard::before{content:"";position:absolute;left:0;top:10px;bottom:10px;width:3px;border-radius:3px;background:var(--wire);}
+  .tcard.unread::before{background:var(--wait);}
+  .tcard.owe-reply::before{background:var(--delivered);}
+  .tcard.answered::before{background:var(--acked);}
+  .tcard .th-top{display:flex;align-items:center;gap:8px;margin-bottom:3px;}
+  .tcard .th-name{font:600 12.5px "IBM Plex Mono",monospace;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .tcard .th-time{margin-left:auto;font:500 10.5px "IBM Plex Mono",monospace;color:var(--faint);white-space:nowrap;}
+  .tcard .th-prev{font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .tcard.unread .th-prev{color:var(--ink);font-weight:500;}
+  .tcard .th-badge{min-width:17px;height:17px;padding:0 5px;border-radius:9px;background:var(--wait);color:#1b1205;font:700 10.5px "IBM Plex Mono",monospace;display:inline-flex;align-items:center;justify-content:center;}
+  .tcard .th-star{color:var(--delivered);font-size:13px;}
+  .tcard .th-chk{color:var(--acked);font-size:12px;}
+  .tcard .th-urgent{color:var(--urgent);font:700 9px "IBM Plex Mono",monospace;letter-spacing:.05em;}
+
+  .thread{display:grid;grid-template-rows:auto 1fr auto;min-height:0;}
+  .thread-head{display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:1px solid var(--panel-line);background:var(--panel-2);}
+  .thread-head .back{background:none;border:none;color:var(--muted);cursor:pointer;font-size:17px;padding:0 4px;line-height:1;}
+  .thread-head .back:hover{color:var(--ink);}
+  .thread-head .tn{font:600 13px "IBM Plex Mono",monospace;color:var(--ink);}
+  .thread-head .ts{font-size:11px;color:var(--faint);margin-left:auto;}
+  .thread-msgs{overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:9px;scrollbar-width:thin;}
+  .bubble{max-width:84%;padding:8px 11px;border-radius:12px;font-size:12.5px;line-height:1.45;white-space:pre-wrap;word-break:break-word;}
+  .bubble .b-meta{font:500 9.5px "IBM Plex Mono",monospace;color:var(--faint);margin-top:4px;}
+  .bubble.in{align-self:flex-start;background:var(--panel);border:1px solid var(--panel-line);border-bottom-left-radius:4px;}
+  .bubble.in.urgent{border-color:var(--urgent);}
+  .bubble.out{align-self:flex-end;background:color-mix(in srgb,var(--session) 16%,var(--panel));border:1px solid color-mix(in srgb,var(--session) 32%,transparent);border-bottom-right-radius:4px;}
+  .bubble.out.sending{opacity:.6;}
+  .bubble.out.failed{border-color:var(--urgent);}
+  .thread-composer{border-top:1px solid var(--panel-line);padding:10px;display:flex;gap:8px;align-items:flex-end;}
+  .thread-composer textarea{flex:1;resize:none;height:38px;max-height:120px;padding:9px 11px;border-radius:10px;border:1px solid var(--panel-line);background:var(--panel);color:var(--ink);font:400 12.5px "IBM Plex Sans",sans-serif;}
+  .thread-composer textarea:focus{outline:none;border-color:var(--session);}
+  .thread-composer button{border:none;border-radius:10px;height:38px;padding:0 15px;background:var(--session);color:#04201e;font:600 12.5px "IBM Plex Sans",sans-serif;cursor:pointer;}
+  .thread-composer button:disabled{opacity:.45;cursor:default;}
+  .composer-locked{border-top:1px solid var(--panel-line);padding:12px 14px;font:400 12px "IBM Plex Mono",monospace;color:var(--faint);text-align:center;}
+
   @media (max-width:860px){
     .main{grid-template-columns:1fr;grid-template-rows:1fr 300px;}
     .feed{border-left:none;border-top:1px solid var(--panel-line);}
@@ -199,12 +253,14 @@
     </div>
 
     <div class="feed">
-      <div class="feed-head">
-        <span class="live-dot"></span>
-        <h2>Live feed</h2>
-        <span class="c" id="feedcount">0 signals</span>
+      <div class="panel-tabs">
+        <button class="tab active" data-tab="feed"><span class="live-dot"></span> Feed <span class="c" id="feedcount">0</span></button>
+        <button class="tab" data-tab="inbox">Inbox <span class="badge calm" id="inboxbadge" hidden>0</span></button>
       </div>
-      <div class="feed-list" id="feed"></div>
+      <div class="panel-body">
+        <div class="feed-list" id="feed"></div>
+        <div class="inbox" id="inbox" hidden></div>
+      </div>
     </div>
   </div>
 </div>
@@ -376,6 +432,7 @@
           g.append("g").attr("class","badge").style("display","none")
             .call(b=>{ b.append("circle").attr("r",8).attr("fill","var(--nudge)"); b.append("text").attr("class","g-sub").attr("text-anchor","middle").attr("dy",3).attr("fill","#fff").style("font-weight","700"); });
           g.on("mouseenter",(ev,d)=>focusNode(d,ev)).on("mousemove",(ev)=>moveTip(ev)).on("mouseleave",()=>unfocus());
+          g.on("click",(ev,d)=>onNodeClick(d));
           g.call(d3.drag()
             .on("start",(ev,d)=>{ if(!ev.active) sim.alphaTarget(.25).restart(); d.fx=d.x; d.fy=d.y; })
             .on("drag",(ev,d)=>{ d.fx=ev.x; d.fy=ev.y; })
@@ -498,7 +555,7 @@
   const feedEl=document.getElementById("feed");
   const rendered=new Set();
   function renderFeed(hub, fresh){
-    document.getElementById("feedcount").textContent = hub.messages.length+" signal"+(hub.messages.length===1?"":"s");
+    document.getElementById("feedcount").textContent = hub.messages.length;
     if(!hub.messages.length){ if(!feedEl.children.length) feedEl.innerHTML='<div class="feed-empty">bus is quiet —<br>no messages yet</div>'; return; }
     const empty=feedEl.querySelector(".feed-empty"); if(empty) empty.remove();
     // iterate oldest→newest and insert each new card at the TOP, so the
@@ -533,6 +590,133 @@
   function ago(iso){ if(!iso)return""; const d=(Date.now()-new Date(iso).getTime())/1000; if(d<60)return `${Math.max(0,Math.round(d))}s ago`; if(d<3600)return `${Math.round(d/60)}m ago`; return `${Math.round(d/3600)}h ago`; }
   function esc(s){ return (s||"").replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); }
 
+  // ---------- inbox (DM threads, pop-on-seen) ----------
+  let inboxData=null, activeTab="feed", openThreadTask=null, lastSig="";
+  const inboxEl=document.getElementById("inbox");
+  const feedListEl=document.getElementById("feed");
+  const inboxBadge=document.getElementById("inboxbadge");
+
+  document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>switchTab(b.dataset.tab));
+  function switchTab(name){
+    activeTab=name;
+    document.querySelectorAll(".tab").forEach(b=>b.classList.toggle("active",b.dataset.tab===name));
+    feedListEl.hidden = name!=="feed";
+    inboxEl.hidden = name!=="inbox";
+    if(name==="inbox"){ lastSig=""; renderInbox(); }
+  }
+  function onNodeClick(d){
+    if(d.id==="self"){ switchTab("inbox"); return; }
+    const th=inboxData && inboxData.threads.find(t=>t.task===d.id);
+    if(th){ switchTab("inbox"); openThread(d.id); }
+  }
+
+  function pullInbox(){
+    fetch("/api/inbox",{cache:"no-store"}).then(r=>r.json()).then(v=>{
+      if(v.error) return;
+      inboxData=v; renderInboxBadge();
+      if(activeTab==="inbox") renderInbox();
+    }).catch(()=>{});
+  }
+  function renderInboxBadge(){
+    const u=inboxData?inboxData.unread:0, o=inboxData?inboxData.owe:0;
+    if(u>0){ inboxBadge.hidden=false; inboxBadge.classList.remove("calm"); inboxBadge.textContent=u; }
+    else if(o>0){ inboxBadge.hidden=false; inboxBadge.classList.add("calm"); inboxBadge.textContent=o; }
+    else inboxBadge.hidden=true;
+  }
+
+  function sig(){
+    if(!inboxData) return "x";
+    const ts=inboxData.threads.map(t=>[t.task,t.state,t.unread,t.messages.length,t.latest_at].join(":")).join("|");
+    return activeTab+"/"+(openThreadTask||"")+"/"+ts;
+  }
+  function renderInbox(){
+    const s=sig(); if(s===lastSig) return; lastSig=s; // skip needless rebuilds (keeps composer intact)
+    if(!inboxData){ inboxEl.innerHTML='<div class="inbox-empty">connecting…</div>'; return; }
+    if(openThreadTask){
+      const th=inboxData.threads.find(t=>t.task===openThreadTask);
+      if(!th){ openThreadTask=null; } else { renderThread(th); return; }
+    }
+    renderThreadList();
+  }
+
+  function renderThreadList(){
+    if(!inboxData.threads.length){ inboxEl.innerHTML='<div class="inbox-empty">inbox zero 🎉<br>no agent is waiting on you</div>'; return; }
+    const list=document.createElement("div"); list.className="inbox-list";
+    inboxData.threads.forEach(th=>{
+      const last=th.messages[th.messages.length-1];
+      const prev=(last?(last.dir==="out"?"you: ":"")+last.body:"").replace(/\s+/g," ");
+      let right="";
+      if(th.state==="unread") right=`${th.urgent?'<span class="th-urgent">URGENT</span>':''}<span class="th-badge">${th.unread}</span>`;
+      else if(th.state==="owe-reply") right=`<span class="th-star" title="you owe a reply">★</span>`;
+      else right=`<span class="th-chk" title="answered">✓</span>`;
+      const c=document.createElement("button");
+      c.className="tcard "+th.state;
+      c.innerHTML=`<div class="th-top"><span class="th-name">${esc(th.name)}</span><span class="th-time">${ago(th.latest_at)}</span></div>`+
+                  `<div class="th-top"><span class="th-prev">${esc(prev)}</span>${right}</div>`;
+      c.onclick=()=>openThread(th.task);
+      list.appendChild(c);
+    });
+    inboxEl.replaceChildren(list);
+  }
+
+  function openThread(task){
+    openThreadTask=task;
+    const th=inboxData && inboxData.threads.find(t=>t.task===task);
+    if(th && th.pending_ids && th.pending_ids.length){
+      // pop-on-seen: ack the pending inbound ids, stop flow escalation
+      fetch(`/api/threads/${encodeURIComponent(task)}/seen`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({ids:th.pending_ids})})
+        .then(()=>pullInbox()).catch(()=>{});
+      th.pending_ids=[]; th.unread=0; if(th.state==="unread") th.state="owe-reply"; // optimistic
+      renderInboxBadge();
+    }
+    lastSig=""; renderInbox();
+  }
+
+  function renderThread(th){
+    const wrap=document.createElement("div"); wrap.className="thread";
+    const head=document.createElement("div"); head.className="thread-head";
+    head.innerHTML=`<button class="back" title="back">‹</button><span class="tn">${esc(th.task)}</span><span class="ts">${esc(th.name)}</span>`;
+    head.querySelector(".back").onclick=()=>{ openThreadTask=null; lastSig=""; renderInbox(); };
+    const msgs=document.createElement("div"); msgs.className="thread-msgs";
+    th.messages.forEach(m=>{
+      const b=document.createElement("div"); b.className="bubble "+m.dir+(m.urgent?" urgent":"");
+      b.innerHTML=`${esc(m.body)}<div class="b-meta">${m.dir==="in"?esc(th.task):"you"} · ${ago(m.at)}${m.dir==="in"&&m.status!=="acked"?" · unread":""}${m.dir==="out"?" · ✓ routed":""}</div>`;
+      msgs.appendChild(b);
+    });
+    wrap.appendChild(head); wrap.appendChild(msgs);
+    if(th.repliable){
+      const comp=document.createElement("div"); comp.className="thread-composer";
+      const ta=document.createElement("textarea"); ta.placeholder="reply to "+th.task+"…"; ta.rows=1;
+      const btn=document.createElement("button"); btn.textContent="Send";
+      const send=()=>{ const t=ta.value.trim(); if(!t)return; btn.disabled=true; sendReply(th.task,t,ta,btn,msgs); };
+      btn.onclick=send;
+      ta.onkeydown=(e)=>{ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); send(); } };
+      comp.appendChild(ta); comp.appendChild(btn); wrap.appendChild(comp);
+    } else {
+      const lock=document.createElement("div"); lock.className="composer-locked";
+      lock.textContent="🔒 "+(th.lock_reason||"can't reply to this thread");
+      wrap.appendChild(lock);
+    }
+    inboxEl.replaceChildren(wrap);
+    msgs.scrollTop=msgs.scrollHeight;
+  }
+
+  function sendReply(task,text,ta,btn,msgs){
+    const b=document.createElement("div"); b.className="bubble out sending";
+    b.innerHTML=`${esc(text)}<div class="b-meta">you · sending…</div>`;
+    msgs.appendChild(b); msgs.scrollTop=msgs.scrollHeight;
+    fetch(`/api/threads/${encodeURIComponent(task)}/reply`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text})})
+      .then(r=>r.json()).then(j=>{
+        if(j.error) throw new Error(j.error);
+        ta.value=""; btn.disabled=false;
+        b.classList.remove("sending"); b.querySelector(".b-meta").textContent="you · ✓ routed";
+        lastSig=""; pullInbox();
+      }).catch(e=>{
+        btn.disabled=false; b.classList.remove("sending"); b.classList.add("failed");
+        b.querySelector(".b-meta").textContent="failed: "+(e.message||e)+" · tap Send to retry";
+      });
+  }
+
   // ---------- theme + resize ----------
   const themeBtn=document.getElementById("theme");
   const stored=(()=>{try{return localStorage.getItem("flowhub-theme");}catch(e){return null;}})();
@@ -547,6 +731,7 @@
 
   // ---------- go ----------
   pull(); setInterval(pull, POLL_MS);
+  pullInbox(); setInterval(pullInbox, POLL_MS);
 })();
 </script>
 </body>

@@ -6,3 +6,4 @@
 
 # git worktrees for feature isolation
 /.worktrees/
+/flowhub-inbox
