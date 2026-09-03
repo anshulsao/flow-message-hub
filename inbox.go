@@ -19,7 +19,7 @@ type InboxThread struct {
 	Repliable  bool        `json:"repliable"`   // false for general / finished agents
 	LockReason string      `json:"lock_reason,omitempty"` // why the composer is locked
 	Urgent     bool        `json:"urgent"`      // any unread message is urgent
-	State      string      `json:"state"`      // "unread" | "owe-reply" | "answered"
+	State      string      `json:"state"`      // "unread" | "owe-reply" | "answered" | "closed"
 	Unread     int         `json:"unread"`     // count of pending inbound
 	PendingIDs []string    `json:"pending_ids"`// inbound ids to ack on "seen"
 	LatestAt   string      `json:"latest_at"`
@@ -149,6 +149,10 @@ func buildInbox(msgs []rawMessage, tasks map[string]taskMeta) InboxView {
 			v.Unread++
 		case a.lastOut >= a.lastIn && a.lastOut != "":
 			a.th.State = "answered"
+		case !a.th.Repliable:
+			// seen but you can't reply (finished agent / general thread):
+			// it's closed, not an open todo — don't nag with an owe-star.
+			a.th.State = "closed"
 		default:
 			a.th.State = "owe-reply"
 			v.Owe++

@@ -176,6 +176,9 @@
   .tcard.unread::before{background:var(--wait);}
   .tcard.owe-reply::before{background:var(--delivered);}
   .tcard.answered::before{background:var(--acked);}
+  .tcard.closed::before{background:var(--wire);}
+  .tcard.closed{opacity:.72;}
+  .tcard .th-closed{font-size:11px;opacity:.7;}
   .tcard .th-top{display:flex;align-items:center;gap:8px;margin-bottom:3px;}
   .tcard .th-name{font:600 12.5px "IBM Plex Mono",monospace;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .tcard .th-time{margin-left:auto;font:500 10.5px "IBM Plex Mono",monospace;color:var(--faint);white-space:nowrap;}
@@ -688,6 +691,7 @@
       let right="";
       if(th.state==="unread") right=`${th.urgent?'<span class="th-urgent">URGENT</span>':''}<span class="th-badge">${th.unread}</span>`;
       else if(th.state==="owe-reply") right=`<span class="th-star" title="you owe a reply">★</span>`;
+      else if(th.state==="closed") right=`<span class="th-closed" title="closed — agent finished, can't reply">🔒</span>`;
       else right=`<span class="th-chk" title="answered">✓</span>`;
       const c=document.createElement("button");
       c.className="tcard "+th.state;
@@ -742,7 +746,7 @@
       // pop-on-seen: ack the pending inbound ids, stop flow escalation
       fetch(`/api/threads/${encodeURIComponent(task)}/seen`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({ids:th.pending_ids})})
         .then(()=>pullInbox()).catch(()=>{});
-      th.pending_ids=[]; th.unread=0; if(th.state==="unread") th.state="owe-reply"; // optimistic
+      th.pending_ids=[]; th.unread=0; if(th.state==="unread") th.state=th.repliable?"owe-reply":"closed"; // optimistic
       renderInboxBadge();
     }
     lastSig=""; renderInbox();

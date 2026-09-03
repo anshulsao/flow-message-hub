@@ -137,6 +137,14 @@ func TestBuildInbox_DoneAgentNotRepliable(t *testing.T) {
 	if th.LockReason == "" {
 		t.Fatalf("want a lock reason explaining why")
 	}
+	// seen-but-unanswered on a dead agent is "closed", not an owe-reply todo,
+	// and must not count toward the owe badge (you can't reply anyway).
+	if th.State != "closed" {
+		t.Fatalf("dead-agent seen thread should be closed, got %q", th.State)
+	}
+	if v.Owe != 0 {
+		t.Fatalf("closed threads must not count as owe: owe=%d", v.Owe)
+	}
 }
 
 // Peer-to-peer traffic (session -> session) is NOT part of the human inbox.
