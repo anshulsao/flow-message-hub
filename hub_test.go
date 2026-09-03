@@ -127,6 +127,28 @@ func TestBuildHub_NudgeAttachedToNode(t *testing.T) {
 	}
 }
 
+// A broadcast fanned out to N watchers (N rows, same sender/instant/body)
+// regroups into ONE event carrying all N targets.
+func TestBuildHub_BroadcastGrouped(t *testing.T) {
+	msgs := []rawMessage{
+		{ID: "b1", Kind: "broadcast", CreatedAt: "2026-09-03T10:00:00+05:30",
+			FromAssignee: "self", FromTaskSlug: "grantable-uses", ToAssignee: "self", ToTaskSlug: "demo-apps", Body: "imports done"},
+		{ID: "b2", Kind: "broadcast", CreatedAt: "2026-09-03T10:00:00+05:30",
+			FromAssignee: "self", FromTaskSlug: "grantable-uses", ToAssignee: "self", ToTaskSlug: "pulse", Body: "imports done"},
+	}
+	h := buildHub(msgs, nil, nil, map[string]taskMeta{}, "now")
+	if len(h.Broadcasts) != 1 {
+		t.Fatalf("want 1 grouped broadcast, got %d", len(h.Broadcasts))
+	}
+	b := h.Broadcasts[0]
+	if b.From != "grantable-uses" || len(b.Targets) != 2 {
+		t.Fatalf("bad broadcast grouping: %+v", b)
+	}
+	if len(h.Messages) != 0 {
+		t.Fatalf("broadcasts must not appear as directed messages")
+	}
+}
+
 func TestBuildHub_BroadcastNotAnEdge(t *testing.T) {
 	msgs := []rawMessage{{ID: "b1", Kind: "broadcast", FromAssignee: "self", FromTaskSlug: "x", ToAssignee: "self", Body: "fyi"}}
 	h := buildHub(msgs, nil, nil, map[string]taskMeta{}, "now")

@@ -75,12 +75,23 @@ type Stats struct {
 	Nudges       int `json:"nudges"`
 }
 
+// Broadcast is one fan-out event: a sender's one-liner that reached a set
+// of watchers. flow materializes a broadcast as one row per watcher; we
+// regroup those rows back into a single event with all its targets.
+type Broadcast struct {
+	From    string   `json:"from"`
+	Body    string   `json:"body"`
+	At      string   `json:"at"`
+	Targets []string `json:"targets"`
+}
+
 type Hub struct {
 	GeneratedAt string      `json:"generated_at"`
 	Stats       Stats       `json:"stats"`
 	Nodes       []Node      `json:"nodes"`
 	Messages    []Edge      `json:"messages"`
 	Watches     []WatchEdge `json:"watches"`
+	Broadcasts  []Broadcast `json:"broadcasts"`
 }
 
 // humanID is the canonical node id for the local human. Flow's reserved
@@ -202,6 +213,30 @@ func buildHub(msgs []rawMessage, watches []rawWatch, nudges []rawNudge, tasks ma
 		messages = append(messages, e)
 	}
 
+	// Broadcast events. flow fans one broadcast out to one row per watcher;
+	// regroup by (sender, instant, body) so it reads as a single event with
+	// all its targets rather than N duplicate rows.
+	bcastBy := map[string]*Broadcast{}
+	bcastOrder := []string{}
+	for _, m := range msgs {
+		if m.Kind != "broadcast" {
+			continue
+		}
+		from := nodeID(m.FromAssignee, m.FromTaskSlug)
+		key := from + "\x00" + m.CreatedAt + "\x00" + m.Body
+		b := bcastBy[key]
+		if b == nil {
+			b = &Broadcast{From: from, Body: m.Body, At: m.CreatedAt}
+			bcastBy[key] = b
+			bcastOrder = append(bcastOrder, key)
+		}
+		b.Targets = append(b.Targets, nodeID(m.ToAssignee, m.ToTaskSlug))
+	}
+	broadcasts := make([]Broadcast, 0, len(bcastOrder))
+	for _, k := range bcastOrder {
+		broadcasts = append(broadcasts, *bcastBy[k])
+	}
+
 	// Watch edges, with mutual + self detection.
 	present := map[string]bool{}
 	for _, w := range watches {
@@ -262,5 +297,6 @@ func buildHub(msgs []rawMessage, watches []rawWatch, nudges []rawNudge, tasks ma
 		Nodes:       nodes,
 		Messages:    messages,
 		Watches:     wedges,
+		Broadcasts:  broadcasts,
 	}
 }

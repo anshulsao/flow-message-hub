@@ -187,10 +187,12 @@
       <div class="legend" id="legend">
         <div class="row"><span class="sw" style="background:var(--hub)"></span> you (self)</div>
         <div class="row"><span class="sw" style="background:var(--session)"></span> agent session</div>
+        <div class="row"><span class="sw" style="background:var(--target);opacity:.4"></span> done / dead session</div>
         <div class="row"><span class="ln" style="border-color:var(--acked)"></span> message · acked (you replied)</div>
         <div class="row"><span class="ln" style="border-color:var(--delivered)"></span> message · delivered (peer→peer)</div>
         <div class="row"><span class="ln" style="border-color:var(--wait)"></span> message · pending (awaiting you)</div>
         <div class="row"><span class="ln" style="border-color:var(--watch);border-top-style:dashed"></span> watch link</div>
+        <div class="row"><span class="ln" style="border-color:var(--watch);border-top-style:dotted"></span> broadcast → watchers</div>
       </div>
       <div class="hint">drag nodes · hover to focus · scroll to zoom</div>
       <div class="tip" id="tip"></div>
@@ -220,9 +222,11 @@
   // layers
   const root = svg.append("g");
   const gWatch   = root.append("g");
+  const gBcast   = root.append("g");   // broadcast fan-out edges (under messages)
   const gMsg     = root.append("g");
   const gPackets = root.append("g");
   const gNodes   = root.append("g");
+  const BCAST_WINDOW = 1800; // seconds: only show broadcasts from the last 30 min
 
   // glow filter
   const defs = svg.append("defs");
@@ -236,8 +240,9 @@
 
   // ---- state ----
   const nodeById = new Map();
-  let nodes = [], links = [], msgEdges = [];
-  let nodeSel, msgSel, watchSel, packetSel;
+  let nodes = [], links = [], msgEdges = [], bcastEdges = [];
+  let nodeSel, msgSel, watchSel, packetSel, bcastSel, bcastPkSel;
+  const bcastPhase = new Map();
   const seen = new Set();
   let firstLoad = true, lastOk = 0, connErr = null;
   const t0 = performance.now();
@@ -255,7 +260,8 @@
   sim.on("tick", ()=>{}); // rendering handled by RAF
 
   function rOf(n){ return n.kind==="human"?26 : n.kind==="session"?18 : 14; }
-  function colVar(n){ return n.kind==="human"?"--hub" : n.kind==="session"?"--session" : "--target"; }
+  function isDead(n){ return n.kind==="session" && n.status==="done"; } // finished agent, session won't pop
+  function colVar(n){ if(isDead(n)) return "--target"; return n.kind==="human"?"--hub" : n.kind==="session"?"--session" : "--target"; }
   function statusClass(s){ return s==="acked"?"acked":(s==="pending"?"pending":"delivered"); }
   function trunc(s,n){ return s && s.length>n ? s.slice(0,n-1)+"…" : (s||""); }
 
@@ -295,6 +301,22 @@
       waited_s:m.waited_s, at:m.at, phase: prevPhase.has(m.id)?prevPhase.get(m.id):Math.random()
     }));
 
+    // broadcast fan-out edges: sender -> each watcher, one per recent target.
+    // Broadcasts travel along (the reverse of) watch relations; we render
+    // recent ones as fading indigo wires with an outward packet.
+    const nowMs = Date.now();
+    const prevBc = new Map(bcastEdges.map(e=>[e.id,e.phase]));
+    bcastEdges = [];
+    (hub.broadcasts||[]).forEach((b,bi)=>{
+      const ageS=(nowMs-new Date(b.at).getTime())/1000;
+      if(ageS<0 || ageS>BCAST_WINDOW) return;
+      (b.targets||[]).forEach((t,ti)=>{
+        if(!nodeById.has(b.from)||!nodeById.has(t)||b.from===t) return;
+        const id="bc:"+bi+":"+ti;
+        bcastEdges.push({id, from:b.from, to:t, body:b.body, at:b.at, ageS, phase: prevBc.has(id)?prevBc.get(id):Math.random()});
+      });
+    });
+
     // detect NEW messages (skip on first load)
     const fresh=[];
     hub.messages.forEach(m=>{ if(!seen.has(m.id)){ if(!firstLoad) fresh.push(m); seen.add(m.id); }});
@@ -321,6 +343,14 @@
     watchSel = gWatch.selectAll("path.watch").data(links.filter(l=>l.type==="watch"), l=>l.source.id||l.source ? (l.source.id||l.source)+"~"+(l.target.id||l.target) : Math.random())
       .join(en=>en.append("path").attr("class","watch").attr("fill","none")
         .attr("stroke","var(--watch)").attr("stroke-width",1.4).attr("stroke-dasharray","5 5").attr("opacity",.55));
+
+    bcastSel = gBcast.selectAll("path.bc").data(bcastEdges, d=>d.id)
+      .join(en=>en.append("path").attr("class","bc").attr("fill","none")
+        .attr("stroke","var(--watch)").attr("stroke-width",1.6).attr("stroke-dasharray","1 6").attr("stroke-linecap","round"));
+    bcastSel.append("title").text(d=>`broadcast: ${d.from} → ${d.to}\n${d.body}`);
+    bcastPkSel = gBcast.selectAll("g.bpk").data(bcastEdges, d=>d.id)
+      .join(en=>{ const g=en.append("g").attr("class","bpk");
+        g.append("circle").attr("r",3).attr("fill","var(--watch)").attr("filter","url(#glow)"); return g; });
 
     msgSel = gMsg.selectAll("path.msg").data(msgEdges, d=>d.id)
       .join(en=>en.append("path").attr("class","msg").attr("fill","none").attr("stroke-linecap","round"))
@@ -355,11 +385,12 @@
       );
     // (re)style nodes on every update
     nodeSel.each(function(d){
-      const g=d3.select(this), c=`var(${colVar(d)})`;
-      g.select(".ring").attr("r",rOf(d)+4).attr("stroke",c).attr("opacity",.35);
-      g.select(".core").attr("r",rOf(d)).attr("fill",c).attr("opacity",d.kind==="target"?.55:.9);
+      const g=d3.select(this), c=`var(${colVar(d)})`, dead=isDead(d);
+      g.select(".ring").attr("r",rOf(d)+4).attr("stroke",c)
+        .attr("opacity",dead?.5:.35).attr("stroke-dasharray",dead?"3 3":null);
+      g.select(".core").attr("r",rOf(d)).attr("fill",c).attr("opacity",dead?.3:(d.kind==="target"?.55:.9));
       g.select(".flash").attr("r",rOf(d)+4).attr("stroke",c);
-      const lbl=g.select(".g-label").attr("y",rOf(d)+15).text(trunc(d.label,22));
+      const lbl=g.select(".g-label").attr("y",rOf(d)+15).text(trunc(d.label,22)).attr("opacity",dead?.5:1);
       const badge=g.select(".badge");
       if(d.nudge>0){ badge.style("display",null).attr("transform",`translate(${rOf(d)-2},${-rOf(d)+2})`); badge.select("text").text(d.nudge); }
       else badge.style("display","none");
@@ -416,6 +447,16 @@
     if(watchSel) watchSel.each(function(l){ const g=edgeGeom({from:l.source.id||l.source,to:l.target.id||l.target}); if(g) d3.select(this).attr("d",pathD(g)); });
     if(watchSel){ const off=(now*7)%10; watchSel.attr("stroke-dashoffset",-off); }
 
+    // broadcast wires + outward packets, fading with age
+    if(bcastSel) bcastSel.each(function(d){ const g=edgeGeom(d); if(!g) return;
+      const fade=Math.max(0,1-(d.ageS||0)/BCAST_WINDOW);
+      d3.select(this).attr("d",pathD(g)).attr("opacity",0.15+0.4*fade); });
+    if(bcastPkSel) bcastPkSel.each(function(d){ const g=edgeGeom(d); if(!g){ d3.select(this).attr("display","none"); return; }
+      d3.select(this).attr("display",null);
+      const fade=Math.max(0,1-(d.ageS||0)/BCAST_WINDOW);
+      const t=(d.phase + now*0.5)%1; const p=bez(g,t);
+      d3.select(this).attr("transform",`translate(${p.x},${p.y})`).select("circle").attr("opacity",0.35+0.6*fade); });
+
     if(msgSel) msgSel.each(function(d){ const g=edgeGeom(d); if(g) d3.select(this).attr("d",pathD(g)); });
 
     if(packetSel) packetSel.each(function(d){
@@ -460,13 +501,13 @@
       if(rendered.has(m.id)) { const ex=feedEl.querySelector(`[data-id="${m.id}"]`); if(ex){ const w=ex.querySelector(".c-wait"); if(w) w.textContent=waitText(m);} return; }
       rendered.add(m.id);
       const isNew = fresh.some(f=>f.id===m.id);
-      const toYou=m.to==="user"; // human hub is canonicalized to "user" (flow self→user rename)
+      const toYou=m.to==="user", fromYou=m.from==="user"; // human hub canonicalized to "user"
       const sc=m.urgent?"urgent":statusClass(m.status);
       const el=document.createElement("div");
       el.className="card "+sc+(isNew?" new flash":"");
       el.dataset.id=m.id;
       el.innerHTML=
-        `<div class="c-route"><span class="c-node">${m.from}</span><span class="c-arrow">→</span>`+
+        `<div class="c-route"><span class="c-node ${fromYou?"you":""}">${fromYou?"you":m.from}</span><span class="c-arrow">→</span>`+
         `<span class="c-node ${toYou?"you":""}">${toYou?"you":m.to}</span><span class="c-time mono">${ago(m.at)}</span></div>`+
         `<div class="c-body">${esc(m.body)}</div>`+
         `<div class="c-foot"><span class="pill ${sc}">${m.urgent?"urgent":m.status}</span><span class="c-wait">${waitText(m)}</span></div>`;
