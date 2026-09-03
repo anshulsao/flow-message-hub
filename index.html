@@ -341,8 +341,8 @@
   // ---------- SVG joins ----------
   function joinGraph(){
     watchSel = gWatch.selectAll("path.watch").data(links.filter(l=>l.type==="watch"), l=>l.source.id||l.source ? (l.source.id||l.source)+"~"+(l.target.id||l.target) : Math.random())
-      .join(en=>en.append("path").attr("class","watch").attr("fill","none")
-        .attr("stroke","var(--watch)").attr("stroke-width",1.4).attr("stroke-dasharray","5 5").attr("opacity",.55));
+      .join(en=>en.append("path").attr("class","watch").attr("fill","none").attr("stroke-width",1.4).attr("stroke-dasharray","5 5"))
+      .attr("stroke",l=>linkDead(l)?"var(--wire)":"var(--watch)").attr("opacity",l=>linkDead(l)?0.18:0.55);
 
     bcastSel = gBcast.selectAll("path.bc").data(bcastEdges, d=>d.id)
       .join(en=>en.append("path").attr("class","bc").attr("fill","none")
@@ -354,8 +354,8 @@
 
     msgSel = gMsg.selectAll("path.msg").data(msgEdges, d=>d.id)
       .join(en=>en.append("path").attr("class","msg").attr("fill","none").attr("stroke-linecap","round"))
-      .attr("stroke",d=>wireColor(d)).attr("stroke-width",d=>d.status==="acked"?1.6:2.2)
-      .attr("opacity",d=>d.status==="acked"?.5:.8);
+      .attr("stroke",d=>msgStroke(d)).attr("stroke-width",d=>d.status==="acked"?1.6:2.2)
+      .attr("opacity",d=>msgOpacity(d));
 
     packetSel = gPackets.selectAll("g.pk").data(msgEdges, d=>d.id)
       .join(en=>{ const g=en.append("g").attr("class","pk");
@@ -398,6 +398,13 @@
   }
 
   function wireColor(d){ if(d.urgent)return "var(--urgent)"; return d.status==="acked"?"var(--acked)":d.status==="delivered"?"var(--delivered)":"var(--wait)"; }
+  // An edge touching a dead (done) session is HISTORY, not live flow:
+  // grey the wire, drop its packet. from/to may be ids or force-resolved nodes.
+  function deadNode(id){ const n=nodeById.get(id); return !!(n && isDead(n)); }
+  function edgeDead(a,b){ return deadNode(a)||deadNode(b); }
+  function linkDead(l){ return edgeDead(l.source.id||l.source, l.target.id||l.target); }
+  function msgStroke(d){ return edgeDead(d.from,d.to) ? "var(--wire)" : wireColor(d); }
+  function msgOpacity(d){ return edgeDead(d.from,d.to) ? 0.28 : (d.status==="acked"?0.5:0.8); }
 
   // ---------- focus / tooltip ----------
   let focused=null;
@@ -416,8 +423,8 @@
   function moveTip(ev){ const r=stageEl.getBoundingClientRect(); let x=ev.clientX-r.left+14, y=ev.clientY-r.top+14;
     x=Math.min(x, r.width-tipEl.offsetWidth-10); tipEl.style.left=x+"px"; tipEl.style.top=y+"px"; }
   function unfocus(){ focused=null; nodeSel.attr("opacity",1);
-    msgSel.attr("opacity",d=>d.status==="acked"?.5:.8);
-    watchSel.attr("opacity",.55); tipEl.classList.remove("on"); }
+    msgSel.attr("opacity",d=>msgOpacity(d));
+    watchSel.attr("opacity",l=>linkDead(l)?0.18:0.55); tipEl.classList.remove("on"); }
 
   // ---------- geometry ----------
   function edgeGeom(d){
@@ -447,11 +454,11 @@
     if(watchSel) watchSel.each(function(l){ const g=edgeGeom({from:l.source.id||l.source,to:l.target.id||l.target}); if(g) d3.select(this).attr("d",pathD(g)); });
     if(watchSel){ const off=(now*7)%10; watchSel.attr("stroke-dashoffset",-off); }
 
-    // broadcast wires + outward packets, fading with age
+    // broadcast wires + outward packets, fading with age (grey + no packet if it touches a dead node)
     if(bcastSel) bcastSel.each(function(d){ const g=edgeGeom(d); if(!g) return;
-      const fade=Math.max(0,1-(d.ageS||0)/BCAST_WINDOW);
-      d3.select(this).attr("d",pathD(g)).attr("opacity",0.15+0.4*fade); });
-    if(bcastPkSel) bcastPkSel.each(function(d){ const g=edgeGeom(d); if(!g){ d3.select(this).attr("display","none"); return; }
+      const dead=edgeDead(d.from,d.to), fade=Math.max(0,1-(d.ageS||0)/BCAST_WINDOW);
+      d3.select(this).attr("d",pathD(g)).attr("stroke",dead?"var(--wire)":"var(--watch)").attr("opacity",dead?0.14:(0.15+0.4*fade)); });
+    if(bcastPkSel) bcastPkSel.each(function(d){ const g=edgeGeom(d); if(!g||edgeDead(d.from,d.to)){ d3.select(this).attr("display","none"); return; }
       d3.select(this).attr("display",null);
       const fade=Math.max(0,1-(d.ageS||0)/BCAST_WINDOW);
       const t=(d.phase + now*0.5)%1; const p=bez(g,t);
@@ -460,7 +467,7 @@
     if(msgSel) msgSel.each(function(d){ const g=edgeGeom(d); if(g) d3.select(this).attr("d",pathD(g)); });
 
     if(packetSel) packetSel.each(function(d){
-      const g=edgeGeom(d); if(!g){ d3.select(this).attr("display","none"); return; }
+      const g=edgeGeom(d); if(!g||edgeDead(d.from,d.to)){ d3.select(this).attr("display","none"); return; } // dead link = no live packet
       d3.select(this).attr("display",null);
       const speed = d.urgent?0.55 : (d.status==="acked"?0.14 : d.status==="delivered"?0.28 : 0.42);
       let t=(d.phase + now*speed)%1;
