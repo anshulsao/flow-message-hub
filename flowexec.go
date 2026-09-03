@@ -48,7 +48,7 @@ func (f *flowExec) run(args ...string) (string, error) {
 // Ack marks a specific pending inbound message answered (stops escalation).
 // This is the "seen" write in the pop-on-seen model.
 func (f *flowExec) Ack(id string) error {
-	_, err := f.run("inbox", "ack", id, "--as", "self")
+	_, err := f.run("inbox", "ack", id, "--as", "user")
 	return err
 }
 
@@ -60,6 +60,6 @@ func (f *flowExec) Reply(taskSlug, body string) error {
 	if strings.TrimSpace(body) == "" {
 		return fmt.Errorf("empty reply")
 	}
-	_, err := f.run("message", "self/"+taskSlug, body)
+	_, err := f.run("message", "user/"+taskSlug, body)
 	return err
 }

@@ -35,9 +35,9 @@ type InboxView struct {
 // buildInbox derives the human's DM threads from the raw bus rows. Pure, no DB.
 //
 // Direction rules (a message's kind must be "message"):
-//   inbound  (agent→you): to the human (to_task_slug=="" && to_assignee=="self")
+//   inbound  (agent→you): to the human (to_task_slug=="" && to_assignee is self/user)
 //                         keyed by from_task_slug ("~" if the sender is unbound)
-//   reply    (you→agent): from unbound human (from_task_slug=="" && from_assignee=="self")
+//   reply    (you→agent): from unbound human (from_task_slug=="" && from_assignee is self/user)
 //                         to a task (to_task_slug!=""), keyed by to_task_slug
 //
 // Peer-to-peer traffic (both ends carry a task slug) is NOT part of the inbox.
@@ -82,8 +82,9 @@ func buildInbox(msgs []rawMessage, tasks map[string]taskMeta) InboxView {
 		if m.Kind != "message" {
 			continue
 		}
-		toHuman := m.ToTaskSlug == "" && m.ToAssignee == "self"
-		fromHuman := m.FromTaskSlug == "" && m.FromAssignee == "self"
+		// accept both the old "self" and new "user" (PR #94) human sentinel
+		toHuman := m.ToTaskSlug == "" && canonAssignee(m.ToAssignee) == humanID
+		fromHuman := m.FromTaskSlug == "" && canonAssignee(m.FromAssignee) == humanID
 
 		if toHuman {
 			// inbound agent→you (or general if the sender is unbound)

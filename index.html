@@ -627,7 +627,7 @@
     if(name==="inbox"){ lastSig=""; renderInbox(); }
   }
   function onNodeClick(d){
-    if(d.id==="self"){ switchTab("inbox"); return; }
+    if(d.id==="user"){ switchTab("inbox"); return; }
     const th=inboxData && inboxData.threads.find(t=>t.task===d.id);
     if(th){ switchTab("inbox"); openThread(d.id); }
   }
