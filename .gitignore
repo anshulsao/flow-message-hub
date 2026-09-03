@@ -3,3 +3,6 @@
 
 # local scratch / demo output
 /demo/
+
+# git worktrees for feature isolation
+/.worktrees/
