@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -54,6 +55,27 @@ func main() {
 			return
 		}
 		writeJSON(w, buildInbox(msgs, tasks))
+	})
+
+	// Agents you can start a conversation with = live (in-progress) sessions.
+	mux.HandleFunc("/api/agents", func(w http.ResponseWriter, r *http.Request) {
+		tasks, err := st.tasks()
+		if err != nil {
+			httpErr(w, err)
+			return
+		}
+		type agent struct {
+			Slug string `json:"slug"`
+			Name string `json:"name"`
+		}
+		var out []agent
+		for slug, m := range tasks {
+			if m.Status == "in-progress" {
+				out = append(out, agent{Slug: slug, Name: m.Name})
+			}
+		}
+		sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+		writeJSON(w, out)
 	})
 
 	// POST /api/threads/{task}/seen   -> ack the given pending ids (pop-on-seen)

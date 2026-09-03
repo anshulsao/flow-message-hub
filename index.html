@@ -164,9 +164,9 @@
   .tab .badge{min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--urgent);color:#fff;font:700 11px "IBM Plex Mono",monospace;display:inline-flex;align-items:center;justify-content:center;}
   .tab .badge.calm{background:var(--delivered);}
   .panel-body{position:relative;min-height:0;display:grid;}
-  .panel-body>div{grid-area:1/1;min-height:0;}
-  .inbox{min-height:0;display:grid;}
-  .inbox>*{min-height:0;}
+  .panel-body>div{grid-area:1/1;min-height:0;min-width:0;}
+  .inbox{min-height:0;min-width:0;display:grid;overflow:hidden;}
+  .inbox>*{min-height:0;min-width:0;}
   .inbox-list{overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:9px;scrollbar-width:thin;}
   .inbox-list::-webkit-scrollbar{width:8px;}.inbox-list::-webkit-scrollbar-thumb{background:var(--panel-line);border-radius:4px;}
   .inbox-empty{color:var(--faint);text-align:center;padding:40px 20px;font-family:"IBM Plex Mono",monospace;font-size:12px;}
@@ -206,6 +206,18 @@
   .thread-composer button{border:none;border-radius:10px;height:38px;padding:0 15px;background:var(--session);color:#04201e;font:600 12.5px "IBM Plex Sans",sans-serif;cursor:pointer;}
   .thread-composer button:disabled{opacity:.45;cursor:default;}
   .composer-locked{border-top:1px solid var(--panel-line);padding:12px 14px;font:400 12px "IBM Plex Mono",monospace;color:var(--faint);text-align:center;}
+  .tick{font-family:"IBM Plex Mono",monospace;font-weight:600;}
+  .tick.sent{color:var(--faint);}
+  .tick.delivered{color:var(--delivered);}
+  .tick.read{color:var(--acked);}
+  .newbtn{display:flex;align-items:center;justify-content:center;gap:8px;padding:11px;border-radius:11px;border:1px dashed var(--panel-line);background:transparent;color:var(--session);font:600 12.5px "IBM Plex Sans",sans-serif;cursor:pointer;}
+  .newbtn:hover{border-color:var(--session);background:color-mix(in srgb,var(--session) 9%,transparent);}
+  .compose-pick{padding:12px 14px;border-bottom:1px solid var(--panel-line);background:var(--panel-2);display:flex;flex-direction:column;gap:6px;min-width:0;}
+  .compose-pick label{font:600 10.5px "IBM Plex Mono",monospace;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);}
+  .compose-pick select{width:100%;max-width:100%;box-sizing:border-box;padding:8px 10px;border-radius:9px;border:1px solid var(--panel-line);background:var(--panel);color:var(--ink);font:400 12.5px "IBM Plex Sans",sans-serif;}
+  .compose-pick select:focus{outline:none;border-color:var(--session);}
+  .compose-hint{padding:18px;color:var(--faint);font-size:12px;text-align:center;line-height:1.5;}
+  .compose{display:grid;grid-template-rows:auto auto 1fr auto;min-height:0;}
 
   @media (max-width:860px){
     .main{grid-template-columns:1fr;grid-template-rows:1fr 300px;}
@@ -591,7 +603,17 @@
   function esc(s){ return (s||"").replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); }
 
   // ---------- inbox (DM threads, pop-on-seen) ----------
-  let inboxData=null, activeTab="feed", openThreadTask=null, lastSig="";
+  let inboxData=null, activeTab="feed", openThreadTask=null, lastSig="", composeAgents=[];
+  const COMPOSE="__compose__";
+  // WhatsApp-style ticks for YOUR outbound messages, driven by bus status:
+  //   pending = sent (agent hasn't popped it)   → ✓
+  //   delivered = agent's session popped it      → ✓✓
+  //   acked = (rare for peer) treated as read    → ✓✓ green
+  function tick(status){
+    if(status==="acked")    return '<span class="tick read" title="read">✓✓</span>';
+    if(status==="delivered")return '<span class="tick delivered" title="delivered to session">✓✓</span>';
+    return '<span class="tick sent" title="sent, awaiting delivery">✓</span>';
+  }
   const inboxEl=document.getElementById("inbox");
   const feedListEl=document.getElementById("feed");
   const inboxBadge=document.getElementById("inboxbadge");
@@ -630,21 +652,30 @@
     return activeTab+"/"+(openThreadTask||"")+"/"+ts;
   }
   function renderInbox(){
-    const s=sig(); if(s===lastSig) return; lastSig=s; // skip needless rebuilds (keeps composer intact)
     if(!inboxData){ inboxEl.innerHTML='<div class="inbox-empty">connecting…</div>'; return; }
+    if(openThreadTask===COMPOSE){
+      if(!inboxEl.querySelector(".compose-pick")) renderCompose(); // don't clobber while typing
+      return;
+    }
+    const s=sig(); if(s===lastSig) return; lastSig=s; // skip needless rebuilds (keeps composer intact)
     if(openThreadTask){
       const th=inboxData.threads.find(t=>t.task===openThreadTask);
-      if(!th){ openThreadTask=null; } else { renderThread(th); return; }
+      if(th){ renderThread(th); return; }
+      openThreadTask=null;
     }
     renderThreadList();
   }
 
   function renderThreadList(){
-    if(!inboxData.threads.length){ inboxEl.innerHTML='<div class="inbox-empty">inbox zero 🎉<br>no agent is waiting on you</div>'; return; }
     const list=document.createElement("div"); list.className="inbox-list";
-    inboxData.threads.forEach(th=>{
+    const nb=document.createElement("button"); nb.className="newbtn"; nb.textContent="✎  New message to an agent";
+    nb.onclick=openCompose; list.appendChild(nb);
+    if(!inboxData.threads.length){
+      const e=document.createElement("div"); e.className="inbox-empty"; e.innerHTML="inbox zero 🎉<br>no agent is waiting on you"; list.appendChild(e);
+    } else inboxData.threads.forEach(th=>{
       const last=th.messages[th.messages.length-1];
-      const prev=(last?(last.dir==="out"?"you: ":"")+last.body:"").replace(/\s+/g," ");
+      const prevTxt=(last?(last.dir==="out"?"you: ":"")+last.body:"").replace(/\s+/g," ");
+      const prevTick=(last&&last.dir==="out")?tick(last.status)+" ":"";
       let right="";
       if(th.state==="unread") right=`${th.urgent?'<span class="th-urgent">URGENT</span>':''}<span class="th-badge">${th.unread}</span>`;
       else if(th.state==="owe-reply") right=`<span class="th-star" title="you owe a reply">★</span>`;
@@ -652,11 +683,47 @@
       const c=document.createElement("button");
       c.className="tcard "+th.state;
       c.innerHTML=`<div class="th-top"><span class="th-name">${esc(th.name)}</span><span class="th-time">${ago(th.latest_at)}</span></div>`+
-                  `<div class="th-top"><span class="th-prev">${esc(prev)}</span>${right}</div>`;
+                  `<div class="th-top"><span class="th-prev">${prevTick}${esc(prevTxt)}</span>${right}</div>`;
       c.onclick=()=>openThread(th.task);
       list.appendChild(c);
     });
     inboxEl.replaceChildren(list);
+  }
+
+  function openCompose(){
+    openThreadTask=COMPOSE; lastSig="";
+    fetch("/api/agents",{cache:"no-store"}).then(r=>r.json()).then(a=>{
+      composeAgents=a||[];
+      if(!inboxEl.querySelector("textarea")||!inboxEl.querySelector("textarea").value) renderCompose();
+    }).catch(()=>{});
+    renderCompose();
+  }
+
+  function renderCompose(){
+    const wrap=document.createElement("div"); wrap.className="compose";
+    const head=document.createElement("div"); head.className="thread-head";
+    head.innerHTML=`<button class="back" title="back">‹</button><span class="tn">New message</span><span class="ts">start a thread</span>`;
+    head.querySelector(".back").onclick=()=>{ openThreadTask=null; lastSig=""; renderInbox(); };
+    const pick=document.createElement("div"); pick.className="compose-pick";
+    const opts=composeAgents.length
+      ? composeAgents.map(a=>`<option value="${esc(a.slug)}">${esc(a.name||a.slug)} · ${esc(a.slug)}</option>`).join("")
+      : `<option value="">no in-progress agents to message</option>`;
+    pick.innerHTML=`<label>To agent · in-progress session</label><select>${opts}</select>`;
+    const mid=document.createElement("div"); mid.className="compose-hint";
+    mid.innerHTML="Sends a directed message to that agent's session.<br>It lands in the agent's inbox for its next turn.";
+    const sel=pick.querySelector("select");
+    const comp=document.createElement("div"); comp.className="thread-composer";
+    const ta=document.createElement("textarea"); ta.placeholder="message…"; ta.rows=1;
+    const btn=document.createElement("button"); btn.textContent="Send";
+    const send=()=>{ const t=ta.value.trim(), task=sel.value; if(!t||!task){ return; } btn.disabled=true;
+      fetch(`/api/threads/${encodeURIComponent(task)}/reply`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:t})})
+        .then(r=>r.json()).then(j=>{ if(j.error) throw new Error(j.error); openThread(task); pullInbox(); })
+        .catch(e=>{ btn.disabled=false; mid.innerHTML='<span style="color:var(--urgent)">'+esc(e.message||String(e))+'</span>'; });
+    };
+    btn.onclick=send; ta.onkeydown=(e)=>{ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); send(); } };
+    comp.appendChild(ta); comp.appendChild(btn);
+    wrap.appendChild(head); wrap.appendChild(pick); wrap.appendChild(mid); wrap.appendChild(comp);
+    inboxEl.replaceChildren(wrap);
   }
 
   function openThread(task){
@@ -680,7 +747,11 @@
     const msgs=document.createElement("div"); msgs.className="thread-msgs";
     th.messages.forEach(m=>{
       const b=document.createElement("div"); b.className="bubble "+m.dir+(m.urgent?" urgent":"");
-      b.innerHTML=`${esc(m.body)}<div class="b-meta">${m.dir==="in"?esc(th.task):"you"} · ${ago(m.at)}${m.dir==="in"&&m.status!=="acked"?" · unread":""}${m.dir==="out"?" · ✓ routed":""}</div>`;
+      const who=m.dir==="in"?esc(th.task):"you";
+      let extra="";
+      if(m.dir==="in" && m.status==="pending") extra=' · <span class="tick sent">● new</span>';
+      if(m.dir==="out") extra=" · "+tick(m.status);
+      b.innerHTML=`${esc(m.body)}<div class="b-meta">${who} · ${ago(m.at)}${extra}</div>`;
       msgs.appendChild(b);
     });
     wrap.appendChild(head); wrap.appendChild(msgs);
@@ -709,7 +780,7 @@
       .then(r=>r.json()).then(j=>{
         if(j.error) throw new Error(j.error);
         ta.value=""; btn.disabled=false;
-        b.classList.remove("sending"); b.querySelector(".b-meta").textContent="you · ✓ routed";
+        b.classList.remove("sending"); b.querySelector(".b-meta").innerHTML="you · just now · "+tick("pending");
         lastSig=""; pullInbox();
       }).catch(e=>{
         btn.disabled=false; b.classList.remove("sending"); b.classList.add("failed");
