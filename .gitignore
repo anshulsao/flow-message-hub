@@ -1,0 +1,5 @@
+# compiled binary (built with `go build -o flowhub .`)
+/flowhub
+
+# local scratch / demo output
+/demo/
