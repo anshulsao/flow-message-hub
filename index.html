@@ -257,8 +257,8 @@
         <div class="row"><span class="ln" style="border-color:var(--acked)"></span> message · acked</div>
         <div class="row"><span class="ln" style="border-color:var(--delivered)"></span> message · delivered</div>
         <div class="row"><span class="ln" style="border-color:var(--wait)"></span> message · pending</div>
-        <div class="row"><span class="ln" style="border-color:var(--wire);border-top-style:dashed"></span> watch</div>
-        <div class="row"><span class="ln" style="border-color:var(--wire);border-top-style:dotted"></span> broadcast</div>
+        <div class="row"><span class="ln" style="border-color:var(--watch);border-top-style:dashed"></span> watch</div>
+        <div class="row"><span class="ln" style="border-color:var(--watch);border-top-style:dotted"></span> broadcast</div>
         <div class="row" style="margin-top:3px;color:var(--faint)">● moving = live · <span style="color:var(--urgent)">red = urgent</span> · grey = done</div>
       </div>
       <div class="hint">drag nodes · hover to focus · scroll to zoom</div>
@@ -410,8 +410,8 @@
   // ---------- SVG joins ----------
   function joinGraph(){
     watchSel = gWatch.selectAll("path.watch").data(links.filter(l=>l.type==="watch"), l=>l.source.id||l.source ? (l.source.id||l.source)+"~"+(l.target.id||l.target) : Math.random())
-      .join(en=>en.append("path").attr("class","watch").attr("fill","none").attr("stroke","var(--wire)").attr("stroke-width",1.4).attr("stroke-dasharray","5 5"))
-      .attr("opacity",l=>linkDead(l)?0.14:0.35);
+      .join(en=>en.append("path").attr("class","watch").attr("fill","none").attr("stroke-width",1.4).attr("stroke-dasharray","5 5"))
+      .attr("stroke",l=>linkDead(l)?"var(--wire)":"var(--watch)").attr("opacity",l=>linkDead(l)?0.14:0.5);
 
     bcastSel = gBcast.selectAll("path.bc").data(bcastEdges, d=>d.id)
       .join(en=>en.append("path").attr("class","bc").attr("fill","none")
@@ -419,7 +419,7 @@
     bcastSel.append("title").text(d=>`broadcast: ${d.from} → ${d.to}\n${d.body}`);
     bcastPkSel = gBcast.selectAll("g.bpk").data(bcastEdges, d=>d.id)
       .join(en=>{ const g=en.append("g").attr("class","bpk");
-        g.append("circle").attr("r",3).attr("fill","var(--wire)").attr("filter","url(#glow)"); return g; });
+        g.append("circle").attr("r",3).attr("fill","var(--watch)").attr("filter","url(#glow)"); return g; });
 
     msgSel = gMsg.selectAll("path.msg").data(msgEdges, d=>d.id)
       .join(en=>en.append("path").attr("class","msg").attr("fill","none").attr("stroke-linecap","round"))
@@ -533,7 +533,7 @@
     // broadcast wires + outward packets, fading with age (grey + no packet if it touches a dead node)
     if(bcastSel) bcastSel.each(function(d){ const g=edgeGeom(d); if(!g) return;
       const dead=edgeDead(d.from,d.to), fade=Math.max(0,1-(d.ageS||0)/BCAST_WINDOW);
-      d3.select(this).attr("d",pathD(g)).attr("opacity",dead?0.12:(0.15+0.35*fade)); });
+      d3.select(this).attr("d",pathD(g)).attr("stroke",dead?"var(--wire)":"var(--watch)").attr("opacity",dead?0.12:(0.2+0.4*fade)); });
     if(bcastPkSel) bcastPkSel.each(function(d){ const g=edgeGeom(d); if(!g||edgeDead(d.from,d.to)){ d3.select(this).attr("display","none"); return; }
       d3.select(this).attr("display",null);
       const fade=Math.max(0,1-(d.ageS||0)/BCAST_WINDOW);
