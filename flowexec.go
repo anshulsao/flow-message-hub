@@ -45,10 +45,20 @@ func (f *flowExec) run(args ...string) (string, error) {
 	return s, nil
 }
 
+// humanAddr is the reserved human assignee. flow is migrating self→user
+// (PR #94); default to "user" but let FLOW_HUMAN override so the writes
+// work against a pre-#94 binary (FLOW_HUMAN=self).
+func humanAddr() string {
+	if h := os.Getenv("FLOW_HUMAN"); h != "" {
+		return h
+	}
+	return "user"
+}
+
 // Ack marks a specific pending inbound message answered (stops escalation).
 // This is the "seen" write in the pop-on-seen model.
 func (f *flowExec) Ack(id string) error {
-	_, err := f.run("inbox", "ack", id, "--as", "user")
+	_, err := f.run("inbox", "ack", id, "--as", humanAddr())
 	return err
 }
 
@@ -60,6 +70,6 @@ func (f *flowExec) Reply(taskSlug, body string) error {
 	if strings.TrimSpace(body) == "" {
 		return fmt.Errorf("empty reply")
 	}
-	_, err := f.run("message", "user/"+taskSlug, body)
+	_, err := f.run("message", humanAddr()+"/"+taskSlug, body)
 	return err
 }
