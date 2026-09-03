@@ -83,23 +83,38 @@ type Hub struct {
 	Watches     []WatchEdge `json:"watches"`
 }
 
+// humanID is the canonical node id for the local human. Flow's reserved
+// assignee is migrating from "self" to "user" (PR #94); we accept both and
+// normalize to one node so the human hub doesn't split during the rename.
+const humanID = "user"
+
+// canonAssignee folds the human sentinel (self/user) to humanID and leaves
+// every other assignee (task slug, project, other user) untouched.
+func canonAssignee(a string) string {
+	if a == "self" || a == "user" {
+		return humanID
+	}
+	return a
+}
+
 // nodeID resolves a message endpoint to a graph node id.
-// A null/empty task slug with assignee "self" is the human inbox.
+// A null/empty task slug with the human assignee is the human hub.
 func nodeID(assignee, taskSlug string) string {
 	if taskSlug == "" {
-		return assignee // "self" -> the human hub
+		return canonAssignee(assignee) // self/user -> the human hub
 	}
 	return taskSlug
 }
 
-// watcherTask pulls the task slug out of a "<assignee>/<task>" watcher.
+// watcherTask pulls the task slug out of a "<assignee>/<task>" watcher,
+// or folds a bare human assignee to the canonical human id.
 func watcherTask(watcher string) string {
 	for i := 0; i < len(watcher); i++ {
 		if watcher[i] == '/' {
 			return watcher[i+1:]
 		}
 	}
-	return watcher
+	return canonAssignee(watcher)
 }
 
 // buildHub is the pure transformation from raw rows to the served model.
@@ -120,7 +135,7 @@ func buildHub(msgs []rawMessage, watches []rawWatch, nudges []rawNudge, tasks ma
 		seen[id] = true
 		order = append(order, id)
 	}
-	add("self") // the human is always present
+	add(humanID) // the human is always present
 
 	for _, m := range msgs {
 		add(nodeID(m.FromAssignee, m.FromTaskSlug))
@@ -128,7 +143,7 @@ func buildHub(msgs []rawMessage, watches []rawWatch, nudges []rawNudge, tasks ma
 	}
 	for _, w := range watches {
 		add(watcherTask(w.Watcher))
-		add(w.Watched)
+		add(canonAssignee(w.Watched))
 	}
 	for _, n := range nudges {
 		add(n.TaskSlug)
@@ -138,9 +153,9 @@ func buildHub(msgs []rawMessage, watches []rawWatch, nudges []rawNudge, tasks ma
 	for _, id := range order {
 		n := Node{ID: id, Label: id}
 		switch {
-		case id == "self":
+		case id == humanID:
 			n.Kind = "human"
-			n.Label = "self"
+			n.Label = "you"
 			n.Name = "you · the human"
 		case tasks[id].Name != "":
 			n.Kind = "session"
@@ -190,13 +205,13 @@ func buildHub(msgs []rawMessage, watches []rawWatch, nudges []rawNudge, tasks ma
 	// Watch edges, with mutual + self detection.
 	present := map[string]bool{}
 	for _, w := range watches {
-		present[watcherTask(w.Watcher)+"\x00"+w.Watched] = true
+		present[watcherTask(w.Watcher)+"\x00"+canonAssignee(w.Watched)] = true
 	}
 	consumed := map[string]bool{}
 	wedges := make([]WatchEdge, 0, len(watches))
 	for _, w := range watches {
 		from := watcherTask(w.Watcher)
-		to := w.Watched
+		to := canonAssignee(w.Watched)
 		if from == to {
 			wedges = append(wedges, WatchEdge{From: from, To: to, SelfWatch: true})
 			continue

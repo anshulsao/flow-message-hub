@@ -25,14 +25,14 @@ func TestBuildHub_RoutesMessageToHumanHub(t *testing.T) {
 		t.Fatalf("want 1 message edge, got %d", len(h.Messages))
 	}
 	e := h.Messages[0]
-	if e.From != "snabbit-databricks-uc" || e.To != "self" {
+	if e.From != "snabbit-databricks-uc" || e.To != "user" {
 		t.Fatalf("bad route: %s -> %s", e.From, e.To)
 	}
 	if e.WaitedS != 266.8 {
 		t.Fatalf("waited not carried: %v", e.WaitedS)
 	}
-	if self := findNode(h, "self"); self == nil || self.Kind != "human" {
-		t.Fatalf("human hub node missing/wrong: %+v", self)
+	if hub := findNode(h, "user"); hub == nil || hub.Kind != "human" {
+		t.Fatalf("human hub node missing/wrong: %+v", hub)
 	}
 	sess := findNode(h, "snabbit-databricks-uc")
 	if sess == nil || sess.Kind != "session" || sess.Name != "Verify Snabbit" {
@@ -40,6 +40,33 @@ func TestBuildHub_RoutesMessageToHumanHub(t *testing.T) {
 	}
 	if h.Stats.Acked != 1 || h.Stats.Delivered != 0 || h.Stats.Pending != 0 {
 		t.Fatalf("bad stats: %+v", h.Stats)
+	}
+}
+
+// Both the old ("self") and new ("user", PR #94) human sentinels fold to
+// one human hub node, so the graph survives the rename in either direction.
+func TestBuildHub_SelfAndUserFoldToOneHuman(t *testing.T) {
+	msgs := []rawMessage{
+		{ID: "a", Kind: "message", FromAssignee: "self", FromTaskSlug: "t1", ToAssignee: "self", Body: "old"},
+		{ID: "b", Kind: "message", FromAssignee: "user", FromTaskSlug: "t2", ToAssignee: "user", Body: "new"},
+	}
+	h := buildHub(msgs, nil, nil, map[string]taskMeta{}, "now")
+	humans := 0
+	for _, n := range h.Nodes {
+		if n.Kind == "human" {
+			humans++
+			if n.ID != "user" {
+				t.Fatalf("human node id should canonicalize to user, got %q", n.ID)
+			}
+		}
+	}
+	if humans != 1 {
+		t.Fatalf("want exactly one human node, got %d", humans)
+	}
+	for _, e := range h.Messages {
+		if e.To != "user" {
+			t.Fatalf("both self- and user-directed msgs should route to user, got %q", e.To)
+		}
 	}
 }
 

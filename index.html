@@ -460,7 +460,7 @@
       if(rendered.has(m.id)) { const ex=feedEl.querySelector(`[data-id="${m.id}"]`); if(ex){ const w=ex.querySelector(".c-wait"); if(w) w.textContent=waitText(m);} return; }
       rendered.add(m.id);
       const isNew = fresh.some(f=>f.id===m.id);
-      const toYou=m.to==="self";
+      const toYou=m.to==="user"; // human hub is canonicalized to "user" (flow self→user rename)
       const sc=m.urgent?"urgent":statusClass(m.status);
       const el=document.createElement("div");
       el.className="card "+sc+(isNew?" new flash":"");
