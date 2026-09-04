@@ -14,18 +14,18 @@ func findNode(h Hub, id string) *Node {
 func TestBuildHub_RoutesMessageToHumanHub(t *testing.T) {
 	msgs := []rawMessage{{
 		ID: "m1", Kind: "message",
-		FromAssignee: "self", FromTaskSlug: "snabbit-databricks-uc",
+		FromAssignee: "self", FromTaskSlug: "agent-alpha",
 		ToAssignee: "self", ToTaskSlug: "", // null -> the human
 		Body: "fix live", Status: "acked", WaitedS: 266.8, HasWaited: true,
 	}}
-	tasks := map[string]taskMeta{"snabbit-databricks-uc": {Name: "Verify Snabbit", Status: "in-progress"}}
+	tasks := map[string]taskMeta{"agent-alpha": {Name: "Verify catalog", Status: "in-progress"}}
 	h := buildHub(msgs, nil, nil, tasks, "now")
 
 	if len(h.Messages) != 1 {
 		t.Fatalf("want 1 message edge, got %d", len(h.Messages))
 	}
 	e := h.Messages[0]
-	if e.From != "snabbit-databricks-uc" || e.To != "user" {
+	if e.From != "agent-alpha" || e.To != "user" {
 		t.Fatalf("bad route: %s -> %s", e.From, e.To)
 	}
 	if e.WaitedS != 266.8 {
@@ -34,8 +34,8 @@ func TestBuildHub_RoutesMessageToHumanHub(t *testing.T) {
 	if hub := findNode(h, "user"); hub == nil || hub.Kind != "human" {
 		t.Fatalf("human hub node missing/wrong: %+v", hub)
 	}
-	sess := findNode(h, "snabbit-databricks-uc")
-	if sess == nil || sess.Kind != "session" || sess.Name != "Verify Snabbit" {
+	sess := findNode(h, "agent-alpha")
+	if sess == nil || sess.Kind != "session" || sess.Name != "Verify catalog" {
 		t.Fatalf("session node not enriched: %+v", sess)
 	}
 	if h.Stats.Acked != 1 || h.Stats.Delivered != 0 || h.Stats.Pending != 0 {
@@ -73,7 +73,7 @@ func TestBuildHub_SelfAndUserFoldToOneHuman(t *testing.T) {
 func TestBuildHub_SessionToSessionDelivered(t *testing.T) {
 	msgs := []rawMessage{{
 		ID: "m2", Kind: "message",
-		FromAssignee: "self", FromTaskSlug: "grantable-uses",
+		FromAssignee: "self", FromTaskSlug: "agent-beta",
 		ToAssignee: "self", ToTaskSlug: "demo-apps",
 		Body: "M1 done, go-ahead?", Status: "delivered",
 	}}
@@ -81,7 +81,7 @@ func TestBuildHub_SessionToSessionDelivered(t *testing.T) {
 	if len(h.Messages) != 1 {
 		t.Fatalf("want 1 edge, got %d", len(h.Messages))
 	}
-	if h.Messages[0].From != "grantable-uses" || h.Messages[0].To != "demo-apps" {
+	if h.Messages[0].From != "agent-beta" || h.Messages[0].To != "demo-apps" {
 		t.Fatalf("bad route: %+v", h.Messages[0])
 	}
 	if h.Stats.Delivered != 1 || h.Stats.Acked != 0 || h.Stats.Pending != 0 {
@@ -91,8 +91,8 @@ func TestBuildHub_SessionToSessionDelivered(t *testing.T) {
 
 func TestBuildHub_MutualWatchCollapsedOnce(t *testing.T) {
 	watches := []rawWatch{
-		{Watcher: "self/demo-apps", Watched: "grantable-uses"},
-		{Watcher: "self/grantable-uses", Watched: "demo-apps"},
+		{Watcher: "self/demo-apps", Watched: "agent-beta"},
+		{Watcher: "self/agent-beta", Watched: "demo-apps"},
 	}
 	h := buildHub(nil, watches, nil, map[string]taskMeta{}, "now")
 	if len(h.Watches) != 1 {
@@ -107,7 +107,7 @@ func TestBuildHub_MutualWatchCollapsedOnce(t *testing.T) {
 }
 
 func TestBuildHub_SelfWatchDetected(t *testing.T) {
-	watches := []rawWatch{{Watcher: "self/pulse-x", Watched: "pulse-x"}}
+	watches := []rawWatch{{Watcher: "self/agent-gamma", Watched: "agent-gamma"}}
 	h := buildHub(nil, watches, nil, map[string]taskMeta{}, "now")
 	if len(h.Watches) != 1 || !h.Watches[0].SelfWatch {
 		t.Fatalf("self-watch not detected: %+v", h.Watches)
@@ -132,16 +132,16 @@ func TestBuildHub_NudgeAttachedToNode(t *testing.T) {
 func TestBuildHub_BroadcastGrouped(t *testing.T) {
 	msgs := []rawMessage{
 		{ID: "b1", Kind: "broadcast", CreatedAt: "2026-09-03T10:00:00+05:30",
-			FromAssignee: "self", FromTaskSlug: "grantable-uses", ToAssignee: "self", ToTaskSlug: "demo-apps", Body: "imports done"},
+			FromAssignee: "self", FromTaskSlug: "agent-beta", ToAssignee: "self", ToTaskSlug: "demo-apps", Body: "imports done"},
 		{ID: "b2", Kind: "broadcast", CreatedAt: "2026-09-03T10:00:00+05:30",
-			FromAssignee: "self", FromTaskSlug: "grantable-uses", ToAssignee: "self", ToTaskSlug: "pulse", Body: "imports done"},
+			FromAssignee: "self", FromTaskSlug: "agent-beta", ToAssignee: "self", ToTaskSlug: "agent-gamma", Body: "imports done"},
 	}
 	h := buildHub(msgs, nil, nil, map[string]taskMeta{}, "now")
 	if len(h.Broadcasts) != 1 {
 		t.Fatalf("want 1 grouped broadcast, got %d", len(h.Broadcasts))
 	}
 	b := h.Broadcasts[0]
-	if b.From != "grantable-uses" || len(b.Targets) != 2 {
+	if b.From != "agent-beta" || len(b.Targets) != 2 {
 		t.Fatalf("bad broadcast grouping: %+v", b)
 	}
 	if len(h.Messages) != 0 {

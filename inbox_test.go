@@ -151,7 +151,7 @@ func TestBuildInbox_DoneAgentNotRepliable(t *testing.T) {
 func TestBuildInbox_PeerTrafficExcluded(t *testing.T) {
 	msgs := []rawMessage{{
 		ID: "p1", Kind: "message", CreatedAt: "2026-09-03T10:00:00+05:30",
-		FromAssignee: "self", FromTaskSlug: "grantable-uses",
+		FromAssignee: "self", FromTaskSlug: "agent-beta",
 		ToAssignee: "self", ToTaskSlug: "demo-apps",
 		Body: "peer", Status: "delivered",
 	}}
