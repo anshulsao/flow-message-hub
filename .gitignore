@@ -1,0 +1,9 @@
+# compiled binary (built with `go build -o flowhub .`)
+/flowhub
+
+# local scratch / demo output
+/demo/
+
+# git worktrees for feature isolation
+/.worktrees/
+/flowhub-inbox

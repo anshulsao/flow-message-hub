@@ -1,0 +1,822 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flow Message Hub — Live</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  /* ------- tokens: dark-first control-room, with a light variant ------- */
+  :root{
+    --bg:#0B0E14; --bg-grid:rgba(120,150,190,.05);
+    --panel:#111725; --panel-2:#0E1420; --panel-line:#1E2839;
+    --ink:#EAF0F8; --muted:#93A2B8; --faint:#5C6A80;
+    --hub:#F0A32E; --hub-glow:rgba(240,163,46,.55);
+    --session:#2FD4C6; --session-glow:rgba(47,212,198,.5);
+    --target:#7C8AA0; --target-glow:rgba(124,138,160,.35);
+    --acked:#3CCB72; --acked-glow:rgba(60,203,114,.6);
+    --delivered:#4CA3FF; --delivered-glow:rgba(76,163,255,.55);
+    --wait:#F0A32E; --wait-glow:rgba(240,163,46,.7);
+    --urgent:#FF5D52; --urgent-glow:rgba(255,93,82,.8);
+    --watch:#7E84F2; --nudge:#FF5D52;
+    --wire:#26324A;
+    --shadow:0 1px 0 rgba(255,255,255,.03), 0 10px 40px rgba(0,0,0,.5);
+  }
+  :root[data-theme="light"]{
+    --bg:#EEF1F6; --bg-grid:rgba(40,70,120,.05);
+    --panel:#FFFFFF; --panel-2:#F5F8FC; --panel-line:#E1E7F0;
+    --ink:#141C2B; --muted:#54617A; --faint:#8A97AD;
+    --hub:#C97A1F; --hub-glow:rgba(201,122,31,.4);
+    --session:#0E938B; --session-glow:rgba(14,147,139,.35);
+    --target:#8794A6; --target-glow:rgba(135,148,166,.3);
+    --acked:#1F9B54; --acked-glow:rgba(31,155,84,.45);
+    --delivered:#2C6FD6; --delivered-glow:rgba(44,111,214,.4);
+    --wait:#C97A1F; --wait-glow:rgba(201,122,31,.5);
+    --urgent:#DA3B2E; --urgent-glow:rgba(218,59,46,.55);
+    --watch:#5E63C9; --nudge:#DA3B2E;
+    --wire:#CAD4E2;
+    --shadow:0 1px 2px rgba(20,30,45,.06), 0 12px 34px rgba(20,30,45,.12);
+  }
+
+  *{box-sizing:border-box;}
+  [hidden]{display:none!important;}
+  html,body{height:100%;margin:0;overflow:hidden;}
+  body{
+    background:var(--bg);color:var(--ink);
+    font-family:"IBM Plex Sans",system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .mono{font-family:"IBM Plex Mono",monospace;}
+
+  .app{display:grid;grid-template-rows:auto 1fr;height:100%;}
+
+  /* ---------------- top bar ---------------- */
+  .topbar{
+    display:flex;align-items:center;gap:20px;flex-wrap:wrap;
+    padding:12px 18px;border-bottom:1px solid var(--panel-line);
+    background:linear-gradient(180deg,var(--panel),var(--panel-2));
+  }
+  .brand{display:flex;align-items:center;gap:11px;min-width:0;}
+  .logo{
+    width:30px;height:30px;border-radius:8px;flex:none;position:relative;
+    background:radial-gradient(circle at 30% 30%,var(--hub),#b06a12);
+    box-shadow:0 0 0 1px rgba(255,255,255,.08),0 0 18px var(--hub-glow);
+  }
+  .logo::after{content:"";position:absolute;inset:8px;border-radius:50%;
+    border:2px solid rgba(0,0,0,.35);border-top-color:transparent;animation:spin 3.5s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  .brand h1{font-size:15px;font-weight:600;margin:0;letter-spacing:.01em;white-space:nowrap;}
+  .brand .tag{font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--session);margin-top:1px;}
+
+  .chips{display:flex;gap:9px;flex-wrap:wrap;margin-left:4px;}
+  .chip{
+    display:flex;align-items:baseline;gap:7px;padding:6px 12px;border-radius:9px;
+    background:var(--panel-2);border:1px solid var(--panel-line);
+  }
+  .chip .n{font-family:"IBM Plex Mono",monospace;font-size:17px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1;}
+  .chip .l{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);}
+
+  .status{margin-left:auto;display:flex;align-items:center;gap:16px;}
+  .conn{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);}
+  .beacon{width:9px;height:9px;border-radius:50%;background:var(--acked);box-shadow:0 0 0 0 var(--acked-glow);animation:beacon 1.6s ease-out infinite;}
+  .beacon.stale{background:var(--urgent);animation:none;}
+  @keyframes beacon{0%{box-shadow:0 0 0 0 var(--acked-glow);}70%{box-shadow:0 0 0 9px rgba(60,203,114,0);}100%{box-shadow:0 0 0 0 rgba(60,203,114,0);}}
+  .tbtn{background:var(--panel-2);border:1px solid var(--panel-line);color:var(--muted);
+    width:32px;height:32px;border-radius:8px;cursor:pointer;font-size:15px;display:grid;place-items:center;}
+  .tbtn:hover{color:var(--ink);border-color:var(--session);}
+
+  /* ---------------- main split ---------------- */
+  .main{display:grid;grid-template-columns:1fr 380px;min-height:0;}
+  .stage{position:relative;min-width:0;overflow:hidden;
+    background:
+      radial-gradient(1100px 700px at 45% 42%, rgba(47,212,198,.06), transparent 60%),
+      linear-gradient(0deg,var(--bg-grid) 1px,transparent 1px) 0 0/32px 32px,
+      linear-gradient(90deg,var(--bg-grid) 1px,transparent 1px) 0 0/32px 32px,
+      var(--bg);
+  }
+  svg#graph{width:100%;height:100%;display:block;cursor:grab;}
+  svg#graph:active{cursor:grabbing;}
+
+  .legend{position:absolute;left:16px;bottom:14px;display:flex;flex-direction:column;gap:7px;
+    padding:11px 13px;border-radius:11px;background:color-mix(in srgb,var(--panel) 82%,transparent);
+    border:1px solid var(--panel-line);backdrop-filter:blur(8px);font-size:11.5px;color:var(--muted);}
+  .legend .row{display:flex;align-items:center;gap:8px;}
+  .legend .sw{width:16px;height:16px;border-radius:5px;flex:none;}
+  .legend .ln{width:20px;height:0;border-top:2px solid;flex:none;}
+  .hint{position:absolute;right:16px;bottom:14px;font-size:11px;color:var(--faint);}
+
+  /* node label + tooltip */
+  .g-label{font-family:"IBM Plex Mono",monospace;font-size:11px;fill:var(--ink);pointer-events:none;paint-order:stroke;
+    stroke:var(--bg);stroke-width:3.5px;stroke-linejoin:round;}
+  .g-sub{font-family:"IBM Plex Mono",monospace;font-size:9px;fill:var(--faint);pointer-events:none;}
+
+  .tip{position:absolute;pointer-events:none;z-index:5;max-width:280px;
+    background:var(--panel);border:1px solid var(--panel-line);border-radius:10px;
+    padding:9px 11px;box-shadow:var(--shadow);font-size:12px;opacity:0;transform:translateY(4px);transition:opacity .12s,transform .12s;}
+  .tip.on{opacity:1;transform:translateY(0);}
+  .tip .t-name{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--session);margin-bottom:3px;}
+  .tip .t-desc{color:var(--muted);line-height:1.4;}
+  .tip .t-meta{color:var(--faint);margin-top:4px;font-size:11px;}
+
+  /* ---------------- feed ---------------- */
+  .feed{border-left:1px solid var(--panel-line);background:var(--panel-2);display:grid;grid-template-rows:auto 1fr;min-height:0;}
+  .feed-head{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--panel-line);}
+  .feed-head h2{font-size:13px;font-weight:600;margin:0;letter-spacing:.02em;}
+  .feed-head .live-dot{width:7px;height:7px;border-radius:50%;background:var(--urgent);box-shadow:0 0 8px var(--urgent);}
+  .feed-head .c{margin-left:auto;font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--faint);}
+  .feed-list{overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:10px;scrollbar-width:thin;}
+  .feed-list::-webkit-scrollbar{width:8px;}
+  .feed-list::-webkit-scrollbar-thumb{background:var(--panel-line);border-radius:4px;}
+
+  .card{position:relative;padding:11px 13px 11px 15px;border-radius:11px;background:var(--panel);
+    border:1px solid var(--panel-line);box-shadow:var(--shadow);}
+  .card::before{content:"";position:absolute;left:0;top:10px;bottom:10px;width:3px;border-radius:3px;background:var(--wire);}
+  .card.acked::before{background:var(--acked);}
+  .card.delivered::before{background:var(--delivered);}
+  .card.pending::before{background:var(--wait);}
+  .card.urgent::before{background:var(--urgent);}
+  .card.new{animation:cardIn .5s cubic-bezier(.2,.8,.2,1);}
+  @keyframes cardIn{from{opacity:0;transform:translateX(18px) scale(.98);}to{opacity:1;transform:none;}}
+  .card.flash{animation:cardFlash 1.1s ease-out;}
+  @keyframes cardFlash{0%{box-shadow:0 0 0 2px var(--wait-glow),var(--shadow);}100%{box-shadow:var(--shadow);}}
+  .c-route{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-family:"IBM Plex Mono",monospace;font-size:11.5px;margin-bottom:6px;}
+  .c-node{padding:2px 7px;border-radius:6px;background:color-mix(in srgb,var(--session) 15%,transparent);color:var(--session);}
+  .c-node.you{background:color-mix(in srgb,var(--hub) 18%,transparent);color:var(--hub);}
+  .c-arrow{color:var(--faint);}
+  .c-time{margin-left:auto;color:var(--faint);}
+  .c-body{font-size:12.5px;line-height:1.45;color:var(--ink);opacity:.92;}
+  .c-foot{margin-top:7px;display:flex;align-items:center;gap:8px;}
+  .pill{font-family:"IBM Plex Mono",monospace;font-size:10px;font-weight:600;padding:2px 8px;border-radius:999px;letter-spacing:.03em;text-transform:uppercase;}
+  .pill.acked{color:var(--acked);background:color-mix(in srgb,var(--acked) 16%,transparent);}
+  .pill.delivered{color:var(--delivered);background:color-mix(in srgb,var(--delivered) 18%,transparent);}
+  .pill.pending{color:var(--wait);background:color-mix(in srgb,var(--wait) 18%,transparent);}
+  .pill.urgent{color:var(--urgent);background:color-mix(in srgb,var(--urgent) 18%,transparent);}
+  .c-wait{font-family:"IBM Plex Mono",monospace;font-size:10.5px;color:var(--faint);}
+  .feed-empty{color:var(--faint);text-align:center;padding:40px 20px;font-family:"IBM Plex Mono",monospace;font-size:12px;}
+
+  /* ---------------- tabs + inbox ---------------- */
+  .panel-tabs{display:flex;gap:2px;padding:8px 10px 0;border-bottom:1px solid var(--panel-line);background:var(--panel-2);}
+  .tab{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:10px 8px;border:none;background:transparent;color:var(--muted);font:600 12.5px "IBM Plex Sans",sans-serif;letter-spacing:.02em;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;}
+  .tab:hover{color:var(--ink);}
+  .tab.active{color:var(--ink);border-bottom-color:var(--session);}
+  .tab .live-dot{width:7px;height:7px;border-radius:50%;background:var(--urgent);box-shadow:0 0 8px var(--urgent);}
+  .tab .c{font-family:"IBM Plex Mono",monospace;font-size:10.5px;color:var(--faint);font-weight:500;}
+  .tab .badge{min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--urgent);color:#fff;font:700 11px "IBM Plex Mono",monospace;display:inline-flex;align-items:center;justify-content:center;}
+  .tab .badge.calm{background:var(--delivered);}
+  .panel-body{position:relative;min-height:0;display:grid;}
+  .panel-body>div{grid-area:1/1;min-height:0;min-width:0;}
+  .inbox{min-height:0;min-width:0;display:grid;overflow:hidden;}
+  .inbox>*{min-height:0;min-width:0;}
+  .inbox-list{overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:9px;scrollbar-width:thin;}
+  .inbox-list::-webkit-scrollbar{width:8px;}.inbox-list::-webkit-scrollbar-thumb{background:var(--panel-line);border-radius:4px;}
+  .inbox-empty{color:var(--faint);text-align:center;padding:40px 20px;font-family:"IBM Plex Mono",monospace;font-size:12px;}
+
+  .tcard{position:relative;text-align:left;padding:11px 13px 11px 15px;border-radius:11px;background:var(--panel);border:1px solid var(--panel-line);box-shadow:var(--shadow);cursor:pointer;}
+  .tcard::before{content:"";position:absolute;left:0;top:10px;bottom:10px;width:3px;border-radius:3px;background:var(--wire);}
+  .tcard.unread::before{background:var(--wait);}
+  .tcard.owe-reply::before{background:var(--delivered);}
+  .tcard.answered::before{background:var(--acked);}
+  .tcard.closed::before{background:var(--wire);}
+  .tcard.closed{opacity:.72;}
+  .tcard .th-closed{font-size:11px;opacity:.7;}
+  .tcard .th-top{display:flex;align-items:center;gap:8px;margin-bottom:3px;}
+  .tcard .th-name{font:600 12.5px "IBM Plex Mono",monospace;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .tcard .th-time{margin-left:auto;font:500 10.5px "IBM Plex Mono",monospace;color:var(--faint);white-space:nowrap;}
+  .tcard .th-prev{font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .tcard.unread .th-prev{color:var(--ink);font-weight:500;}
+  .tcard .th-badge{min-width:17px;height:17px;padding:0 5px;border-radius:9px;background:var(--wait);color:#1b1205;font:700 10.5px "IBM Plex Mono",monospace;display:inline-flex;align-items:center;justify-content:center;}
+  .tcard .th-star{color:var(--delivered);font-size:13px;}
+  .tcard .th-chk{color:var(--acked);font-size:12px;}
+  .tcard .th-urgent{color:var(--urgent);font:700 9px "IBM Plex Mono",monospace;letter-spacing:.05em;}
+
+  .thread{display:grid;grid-template-rows:auto 1fr auto;min-height:0;}
+  .thread-head{display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:1px solid var(--panel-line);background:var(--panel-2);}
+  .thread-head .back{background:none;border:none;color:var(--muted);cursor:pointer;font-size:17px;padding:0 4px;line-height:1;}
+  .thread-head .back:hover{color:var(--ink);}
+  .thread-head .tn{font:600 13px "IBM Plex Mono",monospace;color:var(--ink);}
+  .thread-head .ts{font-size:11px;color:var(--faint);margin-left:auto;}
+  .thread-msgs{overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:9px;scrollbar-width:thin;}
+  .bubble{max-width:84%;padding:8px 11px;border-radius:12px;font-size:12.5px;line-height:1.45;white-space:pre-wrap;word-break:break-word;}
+  .bubble .b-meta{font:500 9.5px "IBM Plex Mono",monospace;color:var(--faint);margin-top:4px;}
+  .bubble.in{align-self:flex-start;background:var(--panel);border:1px solid var(--panel-line);border-bottom-left-radius:4px;}
+  .bubble.in.urgent{border-color:var(--urgent);}
+  .bubble.out{align-self:flex-end;background:color-mix(in srgb,var(--session) 16%,var(--panel));border:1px solid color-mix(in srgb,var(--session) 32%,transparent);border-bottom-right-radius:4px;}
+  .bubble.out.sending{opacity:.6;}
+  .bubble.out.failed{border-color:var(--urgent);}
+  .thread-composer{border-top:1px solid var(--panel-line);padding:10px;display:flex;gap:8px;align-items:flex-end;}
+  .thread-composer textarea{flex:1;resize:none;height:38px;max-height:120px;padding:9px 11px;border-radius:10px;border:1px solid var(--panel-line);background:var(--panel);color:var(--ink);font:400 12.5px "IBM Plex Sans",sans-serif;}
+  .thread-composer textarea:focus{outline:none;border-color:var(--session);}
+  .thread-composer button{border:none;border-radius:10px;height:38px;padding:0 15px;background:var(--session);color:#04201e;font:600 12.5px "IBM Plex Sans",sans-serif;cursor:pointer;}
+  .thread-composer button:disabled{opacity:.45;cursor:default;}
+  .composer-locked{border-top:1px solid var(--panel-line);padding:12px 14px;font:400 12px "IBM Plex Mono",monospace;color:var(--faint);text-align:center;}
+  .tick{font-family:"IBM Plex Mono",monospace;font-weight:600;}
+  .tick.sent{color:var(--faint);}
+  .tick.delivered{color:var(--delivered);}
+  .tick.read{color:var(--acked);}
+  .newbtn{display:flex;align-items:center;justify-content:center;gap:8px;padding:11px;border-radius:11px;border:1px dashed var(--panel-line);background:transparent;color:var(--session);font:600 12.5px "IBM Plex Sans",sans-serif;cursor:pointer;}
+  .newbtn:hover{border-color:var(--session);background:color-mix(in srgb,var(--session) 9%,transparent);}
+  .compose-pick{padding:12px 14px;border-bottom:1px solid var(--panel-line);background:var(--panel-2);display:flex;flex-direction:column;gap:6px;min-width:0;}
+  .compose-pick label{font:600 10.5px "IBM Plex Mono",monospace;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);}
+  .compose-pick select{width:100%;max-width:100%;box-sizing:border-box;padding:8px 10px;border-radius:9px;border:1px solid var(--panel-line);background:var(--panel);color:var(--ink);font:400 12.5px "IBM Plex Sans",sans-serif;}
+  .compose-pick select:focus{outline:none;border-color:var(--session);}
+  .compose-hint{padding:18px;color:var(--faint);font-size:12px;text-align:center;line-height:1.5;}
+  .compose{display:grid;grid-template-rows:auto auto 1fr auto;min-height:0;}
+
+  @media (max-width:860px){
+    .main{grid-template-columns:1fr;grid-template-rows:1fr 300px;}
+    .feed{border-left:none;border-top:1px solid var(--panel-line);}
+    .chips{display:none;}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .logo::after,.beacon{animation:none;}
+    .card.new,.card.flash{animation:none;}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <div class="brand">
+      <div class="logo"></div>
+      <div>
+        <h1>Flow Message Hub</h1>
+        <div class="tag">bus · live telemetry</div>
+      </div>
+    </div>
+    <div class="chips" id="chips"></div>
+    <div class="status">
+      <div class="conn"><span class="beacon" id="beacon"></span><span id="conn" class="mono">connecting…</span></div>
+      <button class="tbtn" id="theme" title="Toggle theme">◐</button>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="stage">
+      <svg id="graph"></svg>
+      <div class="legend" id="legend">
+        <div class="row"><span class="sw" style="background:var(--hub)"></span> you</div>
+        <div class="row"><span class="sw" style="background:var(--session)"></span> agent session</div>
+        <div class="row"><span class="sw" style="background:var(--target);opacity:.4"></span> done / dead</div>
+        <div class="row"><span class="ln" style="border-color:var(--delivered)"></span> message</div>
+        <div class="row"><span class="ln" style="border-color:var(--watch);border-top-style:dashed"></span> watch</div>
+        <div class="row"><span class="ln" style="border-color:var(--watch);border-top-style:dotted"></span> broadcast</div>
+        <div class="row" style="margin-top:3px;color:var(--faint)">● moving = live · <span style="color:var(--urgent)">red = urgent</span> · grey = done</div>
+      </div>
+      <div class="hint">drag nodes · hover to focus · scroll to zoom</div>
+      <div class="tip" id="tip"></div>
+    </div>
+
+    <div class="feed">
+      <div class="panel-tabs">
+        <button class="tab active" data-tab="feed"><span class="live-dot"></span> Feed <span class="c" id="feedcount">0</span></button>
+        <button class="tab" data-tab="inbox">Inbox <span class="badge calm" id="inboxbadge" hidden>0</span></button>
+      </div>
+      <div class="panel-body">
+        <div class="feed-list" id="feed"></div>
+        <div class="inbox" id="inbox" hidden></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<script>
+(function(){
+  "use strict";
+  const POLL_MS = 2000;
+  const svg = d3.select("#graph");
+  const stageEl = document.querySelector(".stage");
+  const tipEl = document.getElementById("tip");
+  let W = stageEl.clientWidth, H = stageEl.clientHeight;
+
+  // layers
+  const root = svg.append("g");
+  const gWatch   = root.append("g");
+  const gBcast   = root.append("g");   // broadcast fan-out edges (under messages)
+  const gMsg     = root.append("g");
+  const gPackets = root.append("g");
+  const gNodes   = root.append("g");
+  const BCAST_WINDOW = 1800; // seconds: only show broadcasts from the last 30 min
+
+  // glow filter
+  const defs = svg.append("defs");
+  const f = defs.append("filter").attr("id","glow").attr("x","-60%").attr("y","-60%").attr("width","220%").attr("height","220%");
+  f.append("feGaussianBlur").attr("stdDeviation","3.2").attr("result","b");
+  const fm = f.append("feMerge"); fm.append("feMergeNode").attr("in","b"); fm.append("feMergeNode").attr("in","SourceGraphic");
+
+  // zoom / pan
+  const zoom = d3.zoom().scaleExtent([0.4,2.6]).on("zoom",e=>root.attr("transform",e.transform));
+  svg.call(zoom);
+
+  // ---- state ----
+  const nodeById = new Map();
+  let nodes = [], links = [], msgEdges = [], bcastEdges = [];
+  let nodeSel, msgSel, watchSel, packetSel, bcastSel, bcastPkSel;
+  const bcastPhase = new Map();
+  const seen = new Set();
+  let firstLoad = true, lastOk = 0, connErr = null;
+  const t0 = performance.now();
+
+  // ---- forces ----
+  const sim = d3.forceSimulation(nodes)
+    .force("link", d3.forceLink(links).id(d=>d.id).distance(l=>l.type==="watch"?120:150).strength(0.35))
+    .force("charge", d3.forceManyBody().strength(-560))
+    .force("collide", d3.forceCollide(d=>rOf(d)+30))
+    .force("x", d3.forceX(()=>W/2).strength(0.06))
+    .force("y", d3.forceY(()=>H/2).strength(0.06))
+    .force("center", d3.forceCenter(W/2,H/2))
+    .velocityDecay(0.32)
+    .alpha(1);
+  sim.on("tick", ()=>{}); // rendering handled by RAF
+
+  function rOf(n){ return n.kind==="human"?26 : n.kind==="session"?18 : 14; }
+  function isDead(n){ return n.kind==="session" && n.status==="done"; } // finished agent, session won't pop
+  function colVar(n){ if(isDead(n)) return "--target"; return n.kind==="human"?"--hub" : n.kind==="session"?"--session" : "--target"; }
+  function statusClass(s){ return s==="acked"?"acked":(s==="pending"?"pending":"delivered"); }
+  function trunc(s,n){ return s && s.length>n ? s.slice(0,n-1)+"…" : (s||""); }
+
+  // ---------- data pump ----------
+  function pull(){
+    fetch("/api/hub",{cache:"no-store"}).then(r=>r.json()).then(hub=>{
+      if(hub.error) throw new Error(hub.error);
+      connErr=null; lastOk=Date.now();
+      apply(hub);
+    }).catch(e=>{ connErr=String(e.message||e); paintStatus(null); });
+  }
+
+  function apply(hub){
+    // nodes: reuse existing objects to preserve positions
+    const present = new Set();
+    hub.nodes.forEach(n=>{
+      present.add(n.id);
+      let o = nodeById.get(n.id);
+      if(!o){
+        o = Object.assign({}, n, {x:W/2+(Math.random()-.5)*160, y:H/2+(Math.random()-.5)*160});
+        nodeById.set(n.id,o);
+      } else { Object.assign(o,{kind:n.kind,label:n.label,name:n.name,status:n.status,nudge:n.nudge}); }
+    });
+    for(const id of Array.from(nodeById.keys())) if(!present.has(id)) nodeById.delete(id);
+    nodes = Array.from(nodeById.values());
+
+    // links for physics = watches + messages (dedup pairs by type+dir)
+    const seenL = new Set(); links = [];
+    const push=(a,b,type)=>{ const k=type+":"+a+"->"+b; if(seenL.has(k))return; if(!nodeById.has(a)||!nodeById.has(b))return; seenL.add(k); links.push({source:a,target:b,type}); };
+    hub.watches.forEach(w=>push(w.from,w.to,"watch"));
+    hub.messages.forEach(m=>push(m.from,m.to,"msg"));
+
+    // message edges for wires + packets (keep transient phase across updates)
+    const prevPhase = new Map(msgEdges.map(e=>[e.id,e.phase]));
+    msgEdges = hub.messages.filter(m=>nodeById.has(m.from)&&nodeById.has(m.to)).map(m=>({
+      id:m.id, from:m.from, to:m.to, body:m.body, status:m.status, urgent:m.urgent,
+      waited_s:m.waited_s, at:m.at, phase: prevPhase.has(m.id)?prevPhase.get(m.id):Math.random()
+    }));
+
+    // broadcast fan-out edges: sender -> each watcher, one per recent target.
+    // Broadcasts travel along (the reverse of) watch relations; we render
+    // recent ones as fading indigo wires with an outward packet.
+    const nowMs = Date.now();
+    const prevBc = new Map(bcastEdges.map(e=>[e.id,e.phase]));
+    bcastEdges = [];
+    (hub.broadcasts||[]).forEach((b,bi)=>{
+      const ageS=(nowMs-new Date(b.at).getTime())/1000;
+      if(ageS<0 || ageS>BCAST_WINDOW) return;
+      (b.targets||[]).forEach((t,ti)=>{
+        if(!nodeById.has(b.from)||!nodeById.has(t)||b.from===t) return;
+        const id="bc:"+bi+":"+ti;
+        bcastEdges.push({id, from:b.from, to:t, body:b.body, at:b.at, ageS, phase: prevBc.has(id)?prevBc.get(id):Math.random()});
+      });
+    });
+
+    // detect NEW messages (skip on first load)
+    const fresh=[];
+    hub.messages.forEach(m=>{ if(!seen.has(m.id)){ if(!firstLoad) fresh.push(m); seen.add(m.id); }});
+    fresh.forEach(m=>{
+      const e = msgEdges.find(x=>x.id===m.id); if(e) e.burstUntil = perfNow()+2.2;
+      flashNode(m.from); flashNode(m.to);
+    });
+
+    joinGraph();
+    renderFeed(hub, fresh);
+    paintStatus(hub);
+
+    sim.nodes(nodes);
+    sim.force("link").links(links);
+    sim.alpha(firstLoad?1:0.55).restart();
+    firstLoad=false;
+  }
+
+  function flashNode(id){ const o=nodeById.get(id); if(o) o.flashUntil=perfNow()+1.3; }
+  function perfNow(){ return (performance.now()-t0)/1000; }
+
+  // ---------- SVG joins ----------
+  function joinGraph(){
+    watchSel = gWatch.selectAll("path.watch").data(links.filter(l=>l.type==="watch"), l=>l.source.id||l.source ? (l.source.id||l.source)+"~"+(l.target.id||l.target) : Math.random())
+      .join(en=>en.append("path").attr("class","watch").attr("fill","none").attr("stroke-width",1.4).attr("stroke-dasharray","5 5"))
+      .attr("stroke",l=>linkDead(l)?"var(--wire)":"var(--watch)").attr("opacity",l=>linkDead(l)?0.14:0.5);
+
+    bcastSel = gBcast.selectAll("path.bc").data(bcastEdges, d=>d.id)
+      .join(en=>en.append("path").attr("class","bc").attr("fill","none")
+        .attr("stroke","var(--wire)").attr("stroke-width",1.6).attr("stroke-dasharray","1 6").attr("stroke-linecap","round"));
+    bcastSel.append("title").text(d=>`broadcast: ${d.from} → ${d.to}\n${d.body}`);
+    bcastPkSel = gBcast.selectAll("g.bpk").data(bcastEdges, d=>d.id)
+      .join(en=>{ const g=en.append("g").attr("class","bpk");
+        g.append("circle").attr("r",3).attr("fill","var(--watch)").attr("filter","url(#glow)"); return g; });
+
+    msgSel = gMsg.selectAll("path.msg").data(msgEdges, d=>d.id)
+      .join(en=>en.append("path").attr("class","msg").attr("fill","none").attr("stroke-linecap","round"))
+      .attr("stroke",d=>msgStroke(d)).attr("stroke-width",d=>d.status==="acked"?1.6:2.2)
+      .attr("opacity",d=>msgOpacity(d));
+
+    packetSel = gPackets.selectAll("g.pk").data(msgEdges, d=>d.id)
+      .join(en=>{ const g=en.append("g").attr("class","pk");
+        g.append("circle").attr("class","halo").attr("r",7).attr("fill","none");
+        g.append("circle").attr("class","core").attr("r",3.4).attr("filter","url(#glow)");
+        return g; });
+    packetSel.select(".core").attr("fill",d=>wireColor(d));
+    packetSel.select(".halo").attr("stroke",d=>wireColor(d)).attr("stroke-width",1);
+
+    nodeSel = gNodes.selectAll("g.node").data(nodes, d=>d.id)
+      .join(
+        en=>{
+          const g=en.append("g").attr("class","node").style("cursor","pointer");
+          g.append("circle").attr("class","ring").attr("fill","none").attr("stroke-width",2);
+          g.append("circle").attr("class","core").attr("filter","url(#glow)");
+          g.append("circle").attr("class","flash").attr("fill","none").attr("stroke-width",2).attr("opacity",0);
+          g.append("text").attr("class","g-label").attr("text-anchor","middle");
+          g.append("g").attr("class","badge").style("display","none")
+            .call(b=>{ b.append("circle").attr("r",8).attr("fill","var(--nudge)"); b.append("text").attr("class","g-sub").attr("text-anchor","middle").attr("dy",3).attr("fill","#fff").style("font-weight","700"); });
+          g.on("mouseenter",(ev,d)=>focusNode(d,ev)).on("mousemove",(ev)=>moveTip(ev)).on("mouseleave",()=>unfocus());
+          g.on("click",(ev,d)=>onNodeClick(d));
+          g.call(d3.drag()
+            .on("start",(ev,d)=>{ if(!ev.active) sim.alphaTarget(.25).restart(); d.fx=d.x; d.fy=d.y; })
+            .on("drag",(ev,d)=>{ d.fx=ev.x; d.fy=ev.y; })
+            .on("end",(ev,d)=>{ if(!ev.active) sim.alphaTarget(0); d.fx=null; d.fy=null; }));
+          return g;
+        }
+      );
+    // (re)style nodes on every update
+    nodeSel.each(function(d){
+      const g=d3.select(this), c=`var(${colVar(d)})`, dead=isDead(d);
+      g.select(".ring").attr("r",rOf(d)+4).attr("stroke",c)
+        .attr("opacity",dead?.5:.35).attr("stroke-dasharray",dead?"3 3":null);
+      g.select(".core").attr("r",rOf(d)).attr("fill",c).attr("opacity",dead?.3:(d.kind==="target"?.55:.9));
+      g.select(".flash").attr("r",rOf(d)+4).attr("stroke",c);
+      const lbl=g.select(".g-label").attr("y",rOf(d)+15).text(trunc(d.label,22)).attr("opacity",dead?.5:1);
+      const badge=g.select(".badge");
+      if(d.nudge>0){ badge.style("display",null).attr("transform",`translate(${rOf(d)-2},${-rOf(d)+2})`); badge.select("text").text(d.nudge); }
+      else badge.style("display","none");
+    });
+  }
+
+  // A LIVE message edge carries its status color so real traffic reads as
+  // alive; a DEAD (done-session) edge and the structural watch/broadcast
+  // links are grey. Kind is still read from dash style, liveness from motion.
+  // All message edges are one blue regardless of status; red only for urgent;
+  // grey only for dead. (Message state lives in the feed/inbox, not edge color.)
+  function statusColor(d){ return d.urgent ? "var(--urgent)" : "var(--delivered)"; }
+  function wireColor(d){ return edgeDead(d.from,d.to) ? "var(--wire)" : statusColor(d); }
+  function deadNode(id){ const n=nodeById.get(id); return !!(n && isDead(n)); }
+  function edgeDead(a,b){ return deadNode(a)||deadNode(b); }
+  function linkDead(l){ return edgeDead(l.source.id||l.source, l.target.id||l.target); }
+  function msgStroke(d){ return wireColor(d); }
+  function msgOpacity(d){ return edgeDead(d.from,d.to) ? 0.22 : (d.urgent ? 0.9 : 0.7); }
+  // a message packet flows only while it's LIVE: still unanswered (pending) or recent.
+  const LIVE_WINDOW = 120; // seconds
+  function msgLive(d){ if(edgeDead(d.from,d.to)) return false; if(d.status==="pending") return true;
+    return (Date.now()-new Date(d.at).getTime())/1000 < LIVE_WINDOW; }
+
+  // ---------- focus / tooltip ----------
+  let focused=null;
+  function neighbors(id){ const s=new Set([id]); msgEdges.concat(links).forEach(l=>{const a=l.from||(l.source.id||l.source),b=l.to||(l.target.id||l.target); if(a===id)s.add(b); if(b===id)s.add(a);}); return s; }
+  function focusNode(d,ev){
+    focused=d.id; const nb=neighbors(d.id);
+    nodeSel.attr("opacity",n=>nb.has(n.id)?1:.15);
+    msgSel.attr("opacity",e=>(e.from===d.id||e.to===d.id)?(e.status==="acked"?.7:.95):.06);
+    watchSel.attr("opacity",l=>{const a=l.source.id||l.source,b=l.target.id||l.target;return (a===d.id||b===d.id)?.7:.06;});
+    const desc = d.kind==="human" ? "The human. Directed messages escalate here until you reply."
+      : (d.name || "referenced on the bus");
+    tipEl.innerHTML = `<div class="t-name">${d.id}</div><div class="t-desc">${desc}</div>`+
+      (d.status?`<div class="t-meta">status: ${d.status}${d.nudge>0?` · ${d.nudge} nudge`:""}</div>`:"");
+    tipEl.classList.add("on"); moveTip(ev);
+  }
+  function moveTip(ev){ const r=stageEl.getBoundingClientRect(); let x=ev.clientX-r.left+14, y=ev.clientY-r.top+14;
+    x=Math.min(x, r.width-tipEl.offsetWidth-10); tipEl.style.left=x+"px"; tipEl.style.top=y+"px"; }
+  function unfocus(){ focused=null; nodeSel.attr("opacity",1);
+    msgSel.attr("opacity",d=>msgOpacity(d));
+    watchSel.attr("opacity",l=>linkDead(l)?0.14:0.35); tipEl.classList.remove("on"); }
+
+  // ---------- geometry ----------
+  function edgeGeom(d){
+    const s=nodeById.get(d.from||d.source), t=nodeById.get(d.to||d.target);
+    if(!s||!t) return null;
+    const sign = (d.from||"") < (d.to||"") ? 1 : -1;
+    const dx=t.x-s.x, dy=t.y-s.y, len=Math.hypot(dx,dy)||1;
+    const nx=-dy/len, ny=dx/len;
+    const amp = Math.min(48, len*0.16) * sign;
+    const mx=(s.x+t.x)/2 + nx*amp, my=(s.y+t.y)/2 + ny*amp; // control point
+    // trim endpoints to node edges
+    const rs=rOf(s)+3, rt=rOf(t)+7;
+    const a=trimToward(s.x,s.y,mx,my,rs), b=trimToward(t.x,t.y,mx,my,rt);
+    return {sx:a.x,sy:a.y,tx:b.x,ty:b.y,cx:mx,cy:my};
+  }
+  function trimToward(px,py,cx,cy,r){ const dx=cx-px,dy=cy-py,l=Math.hypot(dx,dy)||1; return {x:px+dx/l*r, y:py+dy/l*r}; }
+  function pathD(g){ return `M${g.sx},${g.sy} Q${g.cx},${g.cy} ${g.tx},${g.ty}`; }
+  function bez(g,t){ const u=1-t; return { x:u*u*g.sx+2*u*t*g.cx+t*t*g.tx, y:u*u*g.sy+2*u*t*g.cy+t*t*g.ty }; }
+
+  // ---------- render loop ----------
+  function frame(){
+    const now=perfNow();
+    if(nodeSel) nodeSel.attr("transform",d=>`translate(${d.x},${d.y})`)
+      .each(function(d){ const fl=g=>{}; const g=d3.select(this).select(".flash");
+        if(d.flashUntil&&now<d.flashUntil){ const k=(d.flashUntil-now)/1.3; g.attr("opacity",k).attr("r",rOf(d)+4+(1-k)*14);} else g.attr("opacity",0); });
+
+    if(watchSel) watchSel.each(function(l){ const g=edgeGeom({from:l.source.id||l.source,to:l.target.id||l.target}); if(g) d3.select(this).attr("d",pathD(g)); });
+    if(watchSel){ const off=(now*7)%10; watchSel.attr("stroke-dashoffset",-off); }
+
+    // broadcast wires + outward packets, fading with age (grey + no packet if it touches a dead node)
+    if(bcastSel) bcastSel.each(function(d){ const g=edgeGeom(d); if(!g) return;
+      const dead=edgeDead(d.from,d.to), fade=Math.max(0,1-(d.ageS||0)/BCAST_WINDOW);
+      d3.select(this).attr("d",pathD(g)).attr("stroke",dead?"var(--wire)":"var(--watch)").attr("opacity",dead?0.12:(0.2+0.4*fade)); });
+    if(bcastPkSel) bcastPkSel.each(function(d){ const g=edgeGeom(d); if(!g||edgeDead(d.from,d.to)){ d3.select(this).attr("display","none"); return; }
+      d3.select(this).attr("display",null);
+      const fade=Math.max(0,1-(d.ageS||0)/BCAST_WINDOW);
+      const t=(d.phase + now*0.5)%1; const p=bez(g,t);
+      d3.select(this).attr("transform",`translate(${p.x},${p.y})`).select("circle").attr("opacity",0.35+0.6*fade); });
+
+    if(msgSel) msgSel.each(function(d){ const g=edgeGeom(d); if(g) d3.select(this).attr("d",pathD(g)); });
+
+    if(packetSel) packetSel.each(function(d){
+      const g=edgeGeom(d);
+      // motion = liveness: a packet flows only while the message is live (unanswered or recent)
+      if(!g || !msgLive(d)){ d3.select(this).attr("display","none"); return; }
+      d3.select(this).attr("display",null);
+      const speed = d.urgent?0.55 : (d.status==="pending"?0.42:0.3);
+      let t=(d.phase + now*speed)%1;
+      const p=bez(g,t);
+      const burst = d.burstUntil && now<d.burstUntil;
+      const sel=d3.select(this);
+      sel.attr("transform",`translate(${p.x},${p.y})`);
+      sel.select(".core").attr("r", burst?5.4:3.4).attr("opacity", 1);
+      sel.select(".halo").attr("opacity", burst? (0.9*((d.burstUntil-now)/2.2)+0.2) : 0.3).attr("r", burst?11:7);
+    });
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  // ---------- top bar + feed ----------
+  function paintStatus(hub){
+    const beacon=document.getElementById("beacon"), conn=document.getElementById("conn");
+    const stale = lastOk && (Date.now()-lastOk)>POLL_MS*3;
+    beacon.classList.toggle("stale", !!(connErr||stale));
+    conn.textContent = connErr ? "reconnecting…" : (hub? "updated "+ago(hub.generated_at) : "connecting…");
+    if(!hub) return;
+    const s=hub.stats;
+    const chips=[["participants",s.participants],["messages",s.messages],["acked",s.acked,"--acked"],["delivered",s.delivered,s.delivered?"--delivered":null],["pending",s.pending,s.pending?"--wait":null],["nudges",s.nudges,s.nudges?"--nudge":null]];
+    document.getElementById("chips").innerHTML = chips.map(([l,n,c])=>
+      `<div class="chip"><span class="n"${c?` style="color:var(${c})"`:""}>${n}</span><span class="l">${l}</span></div>`).join("");
+  }
+
+  const feedEl=document.getElementById("feed");
+  const rendered=new Set();
+  function renderFeed(hub, fresh){
+    document.getElementById("feedcount").textContent = hub.messages.length;
+    if(!hub.messages.length){ if(!feedEl.children.length) feedEl.innerHTML='<div class="feed-empty">bus is quiet —<br>no messages yet</div>'; return; }
+    const empty=feedEl.querySelector(".feed-empty"); if(empty) empty.remove();
+    // iterate oldest→newest and insert each new card at the TOP, so the
+    // feed ends up strict reverse-chronology (newest on top) for both the
+    // first-load batch and every later single arrival.
+    hub.messages.forEach(m=>{
+      if(rendered.has(m.id)) { const ex=feedEl.querySelector(`[data-id="${m.id}"]`); if(ex){ const w=ex.querySelector(".c-wait"); if(w) w.textContent=waitText(m);} return; }
+      rendered.add(m.id);
+      const isNew = fresh.some(f=>f.id===m.id);
+      const toYou=m.to==="user", fromYou=m.from==="user"; // human hub canonicalized to "user"
+      const sc=m.urgent?"urgent":statusClass(m.status);
+      const el=document.createElement("div");
+      el.className="card "+sc+(isNew?" new flash":"");
+      el.dataset.id=m.id;
+      el.innerHTML=
+        `<div class="c-route"><span class="c-node ${fromYou?"you":""}">${fromYou?"you":m.from}</span><span class="c-arrow">→</span>`+
+        `<span class="c-node ${toYou?"you":""}">${toYou?"you":m.to}</span><span class="c-time mono">${ago(m.at)}</span></div>`+
+        `<div class="c-body">${esc(m.body)}</div>`+
+        `<div class="c-foot"><span class="pill ${sc}">${m.urgent?"urgent":m.status}</span><span class="c-wait">${waitText(m)}</span></div>`;
+      // insert in correct chronological slot (newest at top)
+      feedEl.insertBefore(el, feedEl.firstChild);
+    });
+    // trim
+    while(feedEl.children.length>60) feedEl.removeChild(feedEl.lastChild);
+  }
+  function waitText(m){
+    if(m.status==="acked") return m.waited_s ? fmtWait(m.waited_s)+" → answered" : "answered";
+    if(m.status==="delivered") return "delivered to session";
+    return "pending — awaiting you"; // human-directed, not yet answered
+  }
+  function fmtWait(s){ if(!s||s<=0)return""; const mm=Math.floor(s/60),ss=Math.round(s%60); return mm>0?`${mm}m ${ss}s`:`${ss}s`; }
+  function ago(iso){ if(!iso)return""; const d=(Date.now()-new Date(iso).getTime())/1000; if(d<60)return `${Math.max(0,Math.round(d))}s ago`; if(d<3600)return `${Math.round(d/60)}m ago`; return `${Math.round(d/3600)}h ago`; }
+  function esc(s){ return (s||"").replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); }
+
+  // ---------- inbox (DM threads, pop-on-seen) ----------
+  let inboxData=null, activeTab="feed", openThreadTask=null, lastSig="", composeAgents=[];
+  const COMPOSE="__compose__";
+  // WhatsApp-style ticks for YOUR outbound messages, driven by bus status:
+  //   pending = sent (agent hasn't popped it)   → ✓
+  //   delivered = agent's session popped it      → ✓✓
+  //   acked = (rare for peer) treated as read    → ✓✓ green
+  function tick(status){
+    if(status==="acked")    return '<span class="tick read" title="read">✓✓</span>';
+    if(status==="delivered")return '<span class="tick delivered" title="delivered to session">✓✓</span>';
+    return '<span class="tick sent" title="sent, awaiting delivery">✓</span>';
+  }
+  const inboxEl=document.getElementById("inbox");
+  const feedListEl=document.getElementById("feed");
+  const inboxBadge=document.getElementById("inboxbadge");
+
+  document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>switchTab(b.dataset.tab));
+  function switchTab(name){
+    activeTab=name;
+    document.querySelectorAll(".tab").forEach(b=>b.classList.toggle("active",b.dataset.tab===name));
+    feedListEl.hidden = name!=="feed";
+    inboxEl.hidden = name!=="inbox";
+    if(name==="inbox"){ lastSig=""; renderInbox(); }
+  }
+  function onNodeClick(d){
+    if(d.id==="user"){ switchTab("inbox"); return; }
+    const th=inboxData && inboxData.threads.find(t=>t.task===d.id);
+    if(th){ switchTab("inbox"); openThread(d.id); }
+  }
+
+  function pullInbox(){
+    fetch("/api/inbox",{cache:"no-store"}).then(r=>r.json()).then(v=>{
+      if(v.error) return;
+      inboxData=v; renderInboxBadge();
+      if(activeTab==="inbox") renderInbox();
+    }).catch(()=>{});
+  }
+  function renderInboxBadge(){
+    const u=inboxData?inboxData.unread:0, o=inboxData?inboxData.owe:0;
+    if(u>0){ inboxBadge.hidden=false; inboxBadge.classList.remove("calm"); inboxBadge.textContent=u; }
+    else if(o>0){ inboxBadge.hidden=false; inboxBadge.classList.add("calm"); inboxBadge.textContent=o; }
+    else inboxBadge.hidden=true;
+  }
+
+  function sig(){
+    if(!inboxData) return "x";
+    const ts=inboxData.threads.map(t=>[t.task,t.state,t.unread,t.messages.length,t.latest_at].join(":")).join("|");
+    return activeTab+"/"+(openThreadTask||"")+"/"+ts;
+  }
+  function renderInbox(){
+    if(!inboxData){ inboxEl.innerHTML='<div class="inbox-empty">connecting…</div>'; return; }
+    if(openThreadTask===COMPOSE){
+      if(!inboxEl.querySelector(".compose-pick")) renderCompose(); // don't clobber while typing
+      return;
+    }
+    const s=sig(); if(s===lastSig) return; lastSig=s; // skip needless rebuilds (keeps composer intact)
+    if(openThreadTask){
+      const th=inboxData.threads.find(t=>t.task===openThreadTask);
+      if(th){ renderThread(th); return; }
+      openThreadTask=null;
+    }
+    renderThreadList();
+  }
+
+  function renderThreadList(){
+    const list=document.createElement("div"); list.className="inbox-list";
+    const nb=document.createElement("button"); nb.className="newbtn"; nb.textContent="✎  New message to an agent";
+    nb.onclick=openCompose; list.appendChild(nb);
+    if(!inboxData.threads.length){
+      const e=document.createElement("div"); e.className="inbox-empty"; e.innerHTML="inbox zero 🎉<br>no agent is waiting on you"; list.appendChild(e);
+    } else inboxData.threads.forEach(th=>{
+      const last=th.messages[th.messages.length-1];
+      const prevTxt=(last?(last.dir==="out"?"you: ":"")+last.body:"").replace(/\s+/g," ");
+      const prevTick=(last&&last.dir==="out")?tick(last.status)+" ":"";
+      let right="";
+      if(th.state==="unread") right=`${th.urgent?'<span class="th-urgent">URGENT</span>':''}<span class="th-badge">${th.unread}</span>`;
+      else if(th.state==="owe-reply") right=`<span class="th-star" title="you owe a reply">★</span>`;
+      else if(th.state==="closed") right=`<span class="th-closed" title="closed — agent finished, can't reply">🔒</span>`;
+      else right=`<span class="th-chk" title="answered">✓</span>`;
+      const c=document.createElement("button");
+      c.className="tcard "+th.state;
+      c.innerHTML=`<div class="th-top"><span class="th-name">${esc(th.name)}</span><span class="th-time">${ago(th.latest_at)}</span></div>`+
+                  `<div class="th-top"><span class="th-prev">${prevTick}${esc(prevTxt)}</span>${right}</div>`;
+      c.onclick=()=>openThread(th.task);
+      list.appendChild(c);
+    });
+    inboxEl.replaceChildren(list);
+  }
+
+  function openCompose(){
+    openThreadTask=COMPOSE; lastSig="";
+    fetch("/api/agents",{cache:"no-store"}).then(r=>r.json()).then(a=>{
+      composeAgents=a||[];
+      if(!inboxEl.querySelector("textarea")||!inboxEl.querySelector("textarea").value) renderCompose();
+    }).catch(()=>{});
+    renderCompose();
+  }
+
+  function renderCompose(){
+    const wrap=document.createElement("div"); wrap.className="compose";
+    const head=document.createElement("div"); head.className="thread-head";
+    head.innerHTML=`<button class="back" title="back">‹</button><span class="tn">New message</span><span class="ts">start a thread</span>`;
+    head.querySelector(".back").onclick=()=>{ openThreadTask=null; lastSig=""; renderInbox(); };
+    const pick=document.createElement("div"); pick.className="compose-pick";
+    const opts=composeAgents.length
+      ? composeAgents.map(a=>`<option value="${esc(a.slug)}">${esc(a.name||a.slug)} · ${esc(a.slug)}</option>`).join("")
+      : `<option value="">no in-progress agents to message</option>`;
+    pick.innerHTML=`<label>To agent · in-progress session</label><select>${opts}</select>`;
+    const mid=document.createElement("div"); mid.className="compose-hint";
+    mid.innerHTML="Sends a directed message to that agent's session.<br>It lands in the agent's inbox for its next turn.";
+    const sel=pick.querySelector("select");
+    const comp=document.createElement("div"); comp.className="thread-composer";
+    const ta=document.createElement("textarea"); ta.placeholder="message…"; ta.rows=1;
+    const btn=document.createElement("button"); btn.textContent="Send";
+    const send=()=>{ const t=ta.value.trim(), task=sel.value; if(!t||!task){ return; } btn.disabled=true;
+      fetch(`/api/threads/${encodeURIComponent(task)}/reply`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:t})})
+        .then(r=>r.json()).then(j=>{ if(j.error) throw new Error(j.error); openThread(task); pullInbox(); })
+        .catch(e=>{ btn.disabled=false; mid.innerHTML='<span style="color:var(--urgent)">'+esc(e.message||String(e))+'</span>'; });
+    };
+    btn.onclick=send; ta.onkeydown=(e)=>{ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); send(); } };
+    comp.appendChild(ta); comp.appendChild(btn);
+    wrap.appendChild(head); wrap.appendChild(pick); wrap.appendChild(mid); wrap.appendChild(comp);
+    inboxEl.replaceChildren(wrap);
+  }
+
+  function openThread(task){
+    openThreadTask=task;
+    const th=inboxData && inboxData.threads.find(t=>t.task===task);
+    if(th && th.pending_ids && th.pending_ids.length){
+      // pop-on-seen: ack the pending inbound ids, stop flow escalation
+      fetch(`/api/threads/${encodeURIComponent(task)}/seen`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({ids:th.pending_ids})})
+        .then(()=>pullInbox()).catch(()=>{});
+      th.pending_ids=[]; th.unread=0; if(th.state==="unread") th.state=th.repliable?"owe-reply":"closed"; // optimistic
+      renderInboxBadge();
+    }
+    lastSig=""; renderInbox();
+  }
+
+  function renderThread(th){
+    const wrap=document.createElement("div"); wrap.className="thread";
+    const head=document.createElement("div"); head.className="thread-head";
+    head.innerHTML=`<button class="back" title="back">‹</button><span class="tn">${esc(th.task)}</span><span class="ts">${esc(th.name)}</span>`;
+    head.querySelector(".back").onclick=()=>{ openThreadTask=null; lastSig=""; renderInbox(); };
+    const msgs=document.createElement("div"); msgs.className="thread-msgs";
+    th.messages.forEach(m=>{
+      const b=document.createElement("div"); b.className="bubble "+m.dir+(m.urgent?" urgent":"");
+      const who=m.dir==="in"?esc(th.task):"you";
+      let extra="";
+      if(m.dir==="in" && m.status==="pending") extra=' · <span class="tick sent">● new</span>';
+      if(m.dir==="out") extra=" · "+tick(m.status);
+      b.innerHTML=`${esc(m.body)}<div class="b-meta">${who} · ${ago(m.at)}${extra}</div>`;
+      msgs.appendChild(b);
+    });
+    wrap.appendChild(head); wrap.appendChild(msgs);
+    if(th.repliable){
+      const comp=document.createElement("div"); comp.className="thread-composer";
+      const ta=document.createElement("textarea"); ta.placeholder="reply to "+th.task+"…"; ta.rows=1;
+      const btn=document.createElement("button"); btn.textContent="Send";
+      const send=()=>{ const t=ta.value.trim(); if(!t)return; btn.disabled=true; sendReply(th.task,t,ta,btn,msgs); };
+      btn.onclick=send;
+      ta.onkeydown=(e)=>{ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); send(); } };
+      comp.appendChild(ta); comp.appendChild(btn); wrap.appendChild(comp);
+    } else {
+      const lock=document.createElement("div"); lock.className="composer-locked";
+      lock.textContent="🔒 "+(th.lock_reason||"can't reply to this thread");
+      wrap.appendChild(lock);
+    }
+    inboxEl.replaceChildren(wrap);
+    msgs.scrollTop=msgs.scrollHeight;
+  }
+
+  function sendReply(task,text,ta,btn,msgs){
+    const b=document.createElement("div"); b.className="bubble out sending";
+    b.innerHTML=`${esc(text)}<div class="b-meta">you · sending…</div>`;
+    msgs.appendChild(b); msgs.scrollTop=msgs.scrollHeight;
+    fetch(`/api/threads/${encodeURIComponent(task)}/reply`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text})})
+      .then(r=>r.json()).then(j=>{
+        if(j.error) throw new Error(j.error);
+        ta.value=""; btn.disabled=false;
+        b.classList.remove("sending"); b.querySelector(".b-meta").innerHTML="you · just now · "+tick("pending");
+        lastSig=""; pullInbox();
+      }).catch(e=>{
+        btn.disabled=false; b.classList.remove("sending"); b.classList.add("failed");
+        b.querySelector(".b-meta").textContent="failed: "+(e.message||e)+" · tap Send to retry";
+      });
+  }
+
+  // ---------- theme + resize ----------
+  const themeBtn=document.getElementById("theme");
+  const stored=(()=>{try{return localStorage.getItem("flowhub-theme");}catch(e){return null;}})();
+  if(stored) document.documentElement.setAttribute("data-theme",stored);
+  else if(window.matchMedia && matchMedia("(prefers-color-scheme: light)").matches) document.documentElement.setAttribute("data-theme","light");
+  themeBtn.onclick=()=>{ const cur=document.documentElement.getAttribute("data-theme")==="light"?"dark":"light";
+    document.documentElement.setAttribute("data-theme",cur); try{localStorage.setItem("flowhub-theme",cur);}catch(e){} };
+
+  function resize(){ W=stageEl.clientWidth; H=stageEl.clientHeight; svg.attr("viewBox",`0 0 ${W} ${H}`);
+    sim.force("center",d3.forceCenter(W/2,H/2)); sim.force("x",d3.forceX(W/2).strength(.06)); sim.force("y",d3.forceY(H/2).strength(.06)); sim.alpha(.3).restart(); }
+  window.addEventListener("resize",resize); resize();
+
+  // ---------- go ----------
+  pull(); setInterval(pull, POLL_MS);
+  pullInbox(); setInterval(pullInbox, POLL_MS);
+})();
+</script>
+</body>
+</html>
