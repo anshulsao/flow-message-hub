@@ -84,6 +84,8 @@
   .tbtn{background:var(--panel-2);border:1px solid var(--panel-line);color:var(--muted);
     width:32px;height:32px;border-radius:8px;cursor:pointer;font-size:15px;display:grid;place-items:center;}
   .tbtn:hover{color:var(--ink);border-color:var(--session);}
+  #showall{width:auto;padding:0 10px;gap:5px;font-family:"IBM Plex Mono",monospace;font-size:11px;white-space:nowrap;}
+  #showall.on{color:var(--ink);border-color:var(--session);}
 
   /* ---------------- main split ---------------- */
   .main{display:grid;grid-template-columns:1fr 380px;min-height:0;}
@@ -246,6 +248,7 @@
     <div class="chips" id="chips"></div>
     <div class="status">
       <div class="conn"><span class="beacon" id="beacon"></span><span id="conn" class="mono">connecting…</span></div>
+      <button class="tbtn" id="showall" title="Show sessions that finished more than 3 days ago" hidden></button>
       <button class="tbtn" id="theme" title="Toggle theme">◐</button>
     </div>
   </div>
@@ -331,6 +334,12 @@
 
   function rOf(n){ return n.kind==="human"?26 : n.kind==="session"?18 : 14; }
   function isDead(n){ return n.kind==="session" && n.status==="done"; } // finished agent, session won't pop
+  const STALE_DAYS = 3;
+  function ageDays(iso){ return iso ? (Date.now()-new Date(iso).getTime())/86400000 : Infinity; }
+  // a session that finished more than STALE_DAYS ago — clutter, hidden by default
+  function staleDead(n){ return isDead(n) && ageDays(n.dead_at) > STALE_DAYS; }
+  let showAll = (()=>{ try{ return localStorage.getItem("flowhub-showall")==="1"; }catch(e){ return false; } })();
+  let lastHub = null;
   function colVar(n){ if(isDead(n)) return "--target"; return n.kind==="human"?"--hub" : n.kind==="session"?"--session" : "--target"; }
   function statusClass(s){ return s==="acked"?"acked":(s==="pending"?"pending":"delivered"); }
   function trunc(s,n){ return s && s.length>n ? s.slice(0,n-1)+"…" : (s||""); }
@@ -345,18 +354,23 @@
   }
 
   function apply(hub){
-    // nodes: reuse existing objects to preserve positions
+    lastHub = hub;
+    // nodes: reuse existing objects to preserve positions. Sessions dead >3d
+    // are hidden by default (not added to nodeById → their edges drop too).
+    let hidden = 0;
     const present = new Set();
     hub.nodes.forEach(n=>{
+      if(!showAll && staleDead(n)){ hidden++; return; }
       present.add(n.id);
       let o = nodeById.get(n.id);
       if(!o){
         o = Object.assign({}, n, {x:W/2+(Math.random()-.5)*160, y:H/2+(Math.random()-.5)*160});
         nodeById.set(n.id,o);
-      } else { Object.assign(o,{kind:n.kind,label:n.label,name:n.name,status:n.status,nudge:n.nudge}); }
+      } else { Object.assign(o,{kind:n.kind,label:n.label,name:n.name,status:n.status,nudge:n.nudge,dead_at:n.dead_at}); }
     });
     for(const id of Array.from(nodeById.keys())) if(!present.has(id)) nodeById.delete(id);
     nodes = Array.from(nodeById.values());
+    paintStaleToggle(hidden);
 
     // links for physics = watches + messages (dedup pairs by type+dir)
     const seenL = new Set(); links = [];
@@ -808,6 +822,22 @@
   else if(window.matchMedia && matchMedia("(prefers-color-scheme: light)").matches) document.documentElement.setAttribute("data-theme","light");
   themeBtn.onclick=()=>{ const cur=document.documentElement.getAttribute("data-theme")==="light"?"dark":"light";
     document.documentElement.setAttribute("data-theme",cur); try{localStorage.setItem("flowhub-theme",cur);}catch(e){} };
+
+  // ---------- stale (dead >3d) toggle ----------
+  const showAllBtn=document.getElementById("showall");
+  function paintStaleToggle(hidden){
+    if(!showAll && hidden===0){ showAllBtn.hidden=true; return; }
+    showAllBtn.hidden=false;
+    showAllBtn.textContent = showAll ? "hide old" : "+"+hidden+" old";
+    showAllBtn.title = showAll ? "Hide sessions that finished more than 3 days ago"
+                               : hidden+" session(s) finished >3 days ago are hidden — click to show";
+    showAllBtn.classList.toggle("on", showAll);
+  }
+  showAllBtn.onclick=()=>{
+    showAll=!showAll;
+    try{ localStorage.setItem("flowhub-showall", showAll?"1":"0"); }catch(e){}
+    if(lastHub) apply(lastHub); // re-filter with existing data; positions preserved
+  };
 
   function resize(){ W=stageEl.clientWidth; H=stageEl.clientHeight; svg.attr("viewBox",`0 0 ${W} ${H}`);
     sim.force("center",d3.forceCenter(W/2,H/2)); sim.force("x",d3.forceX(W/2).strength(.06)); sim.force("y",d3.forceY(H/2).strength(.06)); sim.alpha(.3).restart(); }

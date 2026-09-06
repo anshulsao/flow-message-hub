@@ -32,8 +32,9 @@ type rawNudge struct {
 
 // taskMeta enriches a session node with its human-readable name + status.
 type taskMeta struct {
-	Name   string
-	Status string
+	Name            string
+	Status          string
+	StatusChangedAt string // when it last changed status; for done tasks = when it died
 }
 
 // ---- Output model served to the frontend ----
@@ -45,6 +46,7 @@ type Node struct {
 	Name   string `json:"name"`   // full task name (sessions only)
 	Status string `json:"status"` // task status (sessions only)
 	Nudge  int    `json:"nudge"`  // pending nudge attempts, 0 if none
+	DeadAt string `json:"dead_at,omitempty"` // when a done session finished (drives stale-hiding)
 }
 
 type Edge struct {
@@ -173,6 +175,9 @@ func buildHub(msgs []rawMessage, watches []rawWatch, nudges []rawNudge, tasks ma
 			n.Name = tasks[id].Name
 			n.Status = tasks[id].Status
 			n.Nudge = nudgeBy[id]
+			if tasks[id].Status == "done" {
+				n.DeadAt = tasks[id].StatusChangedAt
+			}
 		default:
 			// Referenced but not a known in-flight task (a project,
 			// an assignee, or a closed task): show it, but muted.
