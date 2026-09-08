@@ -35,6 +35,36 @@ type taskMeta struct {
 	Name            string
 	Status          string
 	StatusChangedAt string // when it last changed status; for done tasks = when it died
+	SessionID       string // harness session id; live if present in a running process
+	AutoRunStatus   string // running|dead|completed for --auto tasks ("" = never an auto run)
+	AutoRunPID      int    // pid of the background --auto run, 0 if none
+}
+
+// runState folds a task's nominal status together with real-process liveness
+// into the one label the board trusts. It is pure: the caller supplies whether
+// the interactive session is attached to a live process (liveSession) and
+// whether the --auto pid is alive (autoPidLive). See liveness.go for how those
+// are probed. This exists because tasks.status is set once at launch and never
+// corrected on crash, so it silently lies for zombie sessions.
+func runState(m taskMeta, liveSession, autoPidLive bool) string {
+	switch m.Status {
+	case "done":
+		return "done"
+	case "backlog":
+		return "backlog"
+	}
+	// in-progress: trust the OS, not the column.
+	if autoPidLive || liveSession {
+		return "live"
+	}
+	if m.AutoRunStatus != "" {
+		// It was launched as an --auto run and nothing is running now — a
+		// failed/finished autonomous run that never reached `flow done`.
+		return "crashed"
+	}
+	// An interactive session whose tab is closed: nominally in-progress but
+	// simply detached, resumable with `flow do`. Not a failure.
+	return "idle"
 }
 
 // ---- Output model served to the frontend ----
@@ -47,6 +77,13 @@ type Node struct {
 	Status string `json:"status"` // task status (sessions only)
 	Nudge  int    `json:"nudge"`  // pending nudge attempts, 0 if none
 	DeadAt string `json:"dead_at,omitempty"` // when a done session finished (drives stale-hiding)
+	// RunState is the real liveness the board paints by: live | idle | crashed
+	// | done | backlog. Empty for non-session nodes (the human, targets).
+	// Unlike Status, it reflects whether a process is actually running.
+	RunState string `json:"run_state,omitempty"`
+	// Launch is set on nodes the UI may start with `flow do --auto`: a backlog
+	// task, or a crashed auto run to relaunch. Empty otherwise.
+	Launch string `json:"launch,omitempty"` // "start" | "restart"
 }
 
 type Edge struct {

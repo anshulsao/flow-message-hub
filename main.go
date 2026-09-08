@@ -147,7 +147,75 @@ func main() {
 			return
 		}
 		hub := buildHub(msgs, watches, nudges, tasks, time.Now().Format(time.RFC3339))
+		enrichLiveness(hub.Nodes, tasks) // replace stale status with real liveness
 		writeJSON(w, hub)
+	})
+
+	// Tasks the UI can launch headlessly: backlog (start) + crashed (restart).
+	mux.HandleFunc("/api/launchable", func(w http.ResponseWriter, r *http.Request) {
+		tasks, err := st.tasks()
+		if err != nil {
+			httpErr(w, err)
+			return
+		}
+		states := taskRunStates(tasks)
+		type launchable struct {
+			Slug  string `json:"slug"`
+			Name  string `json:"name"`
+			State string `json:"state"` // "backlog" | "crashed"
+			Verb  string `json:"verb"`  // "start" | "restart"
+		}
+		var out []launchable
+		for slug, m := range tasks {
+			if v := launchVerb(states[slug]); v != "" {
+				out = append(out, launchable{Slug: slug, Name: m.Name, State: states[slug], Verb: v})
+			}
+		}
+		// Crashed (needs attention) first, then backlog; each group by name.
+		sort.Slice(out, func(i, j int) bool {
+			if out[i].State != out[j].State {
+				return out[i].State == "crashed"
+			}
+			return out[i].Name < out[j].Name
+		})
+		writeJSON(w, out)
+	})
+
+	// POST /api/tasks/{slug}/run-auto -> launch `flow do --auto <slug>`.
+	// The server re-derives the task's real state and only launches a task
+	// that is genuinely backlog or crashed, passing --fresh for a restart.
+	mux.HandleFunc("/api/tasks/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "POST only", http.StatusMethodNotAllowed)
+			return
+		}
+		rest := strings.TrimPrefix(r.URL.Path, "/api/tasks/")
+		slash := strings.LastIndex(rest, "/")
+		if slash < 0 || rest[slash+1:] != "run-auto" {
+			http.NotFound(w, r)
+			return
+		}
+		slug := rest[:slash]
+		tasks, err := st.tasks()
+		if err != nil {
+			httpErr(w, err)
+			return
+		}
+		if _, ok := tasks[slug]; !ok {
+			http.Error(w, "no such task", http.StatusNotFound)
+			return
+		}
+		state := taskRunStates(tasks)[slug] // real state incl. process liveness
+		verb := launchVerb(state)
+		if verb == "" {
+			http.Error(w, "task is not launchable (state="+state+")", http.StatusConflict)
+			return
+		}
+		if err := fx.RunAuto(slug, verb == "restart"); err != nil {
+			httpErr(w, err)
+			return
+		}
+		writeJSON(w, map[string]any{"ok": true, "slug": slug, "verb": verb})
 	})
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {

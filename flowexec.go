@@ -62,6 +62,46 @@ func (f *flowExec) Ack(id string) error {
 	return err
 }
 
+// envWithoutFlowTerm returns the current environment minus FLOW_TERM, which
+// trips `--auto` (a bg flow session refuses `FLOW_TERM=bg` combined with --auto).
+func envWithoutFlowTerm() []string {
+	env := os.Environ()
+	out := env[:0]
+	for _, e := range env {
+		if strings.HasPrefix(e, "FLOW_TERM=") {
+			continue
+		}
+		out = append(out, e)
+	}
+	return out
+}
+
+// RunAuto launches `flow do --auto <slug>` as a detached background run and
+// returns immediately — flow owns the spawned session's lifecycle and writes
+// its own auto-runs log, so we don't wait on it. Used to start a backlog task
+// or relaunch a crashed one from the UI. --fresh is passed for a restart so a
+// dead session is re-bootstrapped rather than resumed into its wedged state.
+func (f *flowExec) RunAuto(taskSlug string, fresh bool) error {
+	if taskSlug == "" {
+		return fmt.Errorf("no task")
+	}
+	args := []string{"do", "--auto", taskSlug}
+	if fresh {
+		args = append(args, "--fresh")
+	}
+	cmd := exec.Command(f.bin, args...)
+	cmd.Env = envWithoutFlowTerm()
+	// Detach from our stdio; flow's own log captures the run's output.
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = nil, nil, nil
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("flow do --auto %s: %w", taskSlug, err)
+	}
+	// Reap the launcher process when it exits so it doesn't linger as a zombie;
+	// the spawned headless run is re-parented and keeps running independently.
+	go func() { _ = cmd.Wait() }()
+	return nil
+}
+
 // Reply routes the human's answer back to the agent's own session inbox.
 func (f *flowExec) Reply(taskSlug, body string) error {
 	if taskSlug == "" || taskSlug == "~" {

@@ -90,18 +90,28 @@ func (s *store) nudges() ([]rawNudge, error) {
 
 // taskMeta for any slug referenced on the bus (name + status enrichment).
 func (s *store) tasks() (map[string]taskMeta, error) {
-	rows, err := s.db.Query(`SELECT slug, name, status, COALESCE(status_changed_at,'') FROM tasks`)
+	rows, err := s.db.Query(`
+		SELECT slug, name, status, COALESCE(status_changed_at,''),
+		       COALESCE(session_id,''), COALESCE(auto_run_status,''),
+		       COALESCE(auto_run_pid,0)
+		FROM tasks
+		WHERE archived_at IS NULL AND deleted_at IS NULL`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	out := map[string]taskMeta{}
 	for rows.Next() {
-		var slug, name, status, changedAt string
-		if err := rows.Scan(&slug, &name, &status, &changedAt); err != nil {
+		var slug, name, status, changedAt, sessionID, autoStatus string
+		var autoPID int
+		if err := rows.Scan(&slug, &name, &status, &changedAt,
+			&sessionID, &autoStatus, &autoPID); err != nil {
 			return nil, err
 		}
-		out[slug] = taskMeta{Name: name, Status: status, StatusChangedAt: changedAt}
+		out[slug] = taskMeta{
+			Name: name, Status: status, StatusChangedAt: changedAt,
+			SessionID: sessionID, AutoRunStatus: autoStatus, AutoRunPID: autoPID,
+		}
 	}
 	return out, rows.Err()
 }
