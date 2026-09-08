@@ -538,7 +538,7 @@
       if(!o){
         o = Object.assign({}, n, {x:W/2+(Math.random()-.5)*160, y:H/2+(Math.random()-.5)*160});
         nodeById.set(n.id,o);
-      } else { Object.assign(o,{kind:n.kind,label:n.label,name:n.name,status:n.status,nudge:n.nudge,dead_at:n.dead_at}); }
+      } else { Object.assign(o,{kind:n.kind,label:n.label,name:n.name,status:n.status,nudge:n.nudge,dead_at:n.dead_at,run_state:n.run_state,launch:n.launch}); }
     });
     for(const id of Array.from(nodeById.keys())) if(!present.has(id)) nodeById.delete(id);
     nodes = Array.from(nodeById.values());
@@ -1135,7 +1135,7 @@
     fetch(`/api/tasks/${encodeURIComponent(slug)}/done`,{method:"POST"})
       .then(async r=>{ const j=await r.json().catch(()=>({})); if(!r.ok) throw new Error(j.error||("HTTP "+r.status)); return j; })
       .then(()=>{ toast(`marked ${slug} done`, "ok");
-        setTimeout(()=>{ loadLaunchable(); pull(); }, 800);
+        loadLaunchable(); pull(); // flow done is synchronous — reflect now
         if(btnEl){ btnEl.textContent="done ✓"; } })
       .catch(e=>{ toast(`couldn't finish ${slug}: ${e.message||e}`, "err");
         if(btnEl){ btnEl.disabled=false; btnEl.textContent="✓ done"; } });
