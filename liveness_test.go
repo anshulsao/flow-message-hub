@@ -11,13 +11,12 @@ func TestRunState(t *testing.T) {
 		name        string
 		m           taskMeta
 		liveSession bool
-		autoPidLive bool
 		want        string
 	}{
 		{
-			name: "auto task with a live pid is live",
-			m:    taskMeta{Status: "in-progress", AutoRunStatus: "running"},
-			autoPidLive: true, want: "live",
+			name: "auto run whose session is attached in ps is live",
+			m:    taskMeta{Status: "in-progress", AutoRunStatus: "running", SessionID: "abc"},
+			liveSession: true, want: "live",
 		},
 		{
 			name: "interactive task whose session is attached is live",
@@ -25,12 +24,12 @@ func TestRunState(t *testing.T) {
 			liveSession: true, want: "live",
 		},
 		{
-			name: "auto task in-progress but pid gone is crashed, not idle",
+			name: "auto run in-progress but session gone from ps is crashed, not idle",
 			m:    taskMeta{Status: "in-progress", AutoRunStatus: "running"},
 			want: "crashed",
 		},
 		{
-			name: "auto task flow already marked dead is crashed",
+			name: "auto run flow already marked dead is crashed",
 			m:    taskMeta{Status: "in-progress", AutoRunStatus: "dead"},
 			want: "crashed",
 		},
@@ -40,9 +39,9 @@ func TestRunState(t *testing.T) {
 			want: "idle",
 		},
 		{
-			name: "done stays done regardless of a stale running pid label",
+			name: "done stays done even with a stale running label",
 			m:    taskMeta{Status: "done", AutoRunStatus: "running"},
-			autoPidLive: false, want: "done",
+			want: "done",
 		},
 		{
 			name: "backlog is backlog",
@@ -51,7 +50,7 @@ func TestRunState(t *testing.T) {
 		},
 	}
 	for _, c := range cases {
-		if got := runState(c.m, c.liveSession, c.autoPidLive); got != c.want {
+		if got := runState(c.m, c.liveSession); got != c.want {
 			t.Errorf("%s: runState = %q, want %q", c.name, got, c.want)
 		}
 	}

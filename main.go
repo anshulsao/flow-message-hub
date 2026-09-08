@@ -191,11 +191,11 @@ func main() {
 		}
 		rest := strings.TrimPrefix(r.URL.Path, "/api/tasks/")
 		slash := strings.LastIndex(rest, "/")
-		if slash < 0 || rest[slash+1:] != "run-auto" {
+		if slash < 0 {
 			http.NotFound(w, r)
 			return
 		}
-		slug := rest[:slash]
+		slug, action := rest[:slash], rest[slash+1:]
 		tasks, err := st.tasks()
 		if err != nil {
 			httpErr(w, err)
@@ -206,16 +206,31 @@ func main() {
 			return
 		}
 		state := taskRunStates(tasks)[slug] // real state incl. process liveness
-		verb := launchVerb(state)
-		if verb == "" {
-			http.Error(w, "task is not launchable (state="+state+")", http.StatusConflict)
-			return
+		switch action {
+		case "run-auto":
+			verb := launchVerb(state)
+			if verb == "" {
+				http.Error(w, "task is not launchable (state="+state+")", http.StatusConflict)
+				return
+			}
+			if err := fx.RunAuto(slug, verb == "restart"); err != nil {
+				httpErr(w, err)
+				return
+			}
+			writeJSON(w, map[string]any{"ok": true, "slug": slug, "verb": verb})
+		case "done":
+			if state == "done" {
+				http.Error(w, "task is already done", http.StatusConflict)
+				return
+			}
+			if err := fx.Done(slug); err != nil {
+				httpErr(w, err)
+				return
+			}
+			writeJSON(w, map[string]any{"ok": true, "slug": slug, "verb": "done"})
+		default:
+			http.NotFound(w, r)
 		}
-		if err := fx.RunAuto(slug, verb == "restart"); err != nil {
-			httpErr(w, err)
-			return
-		}
-		writeJSON(w, map[string]any{"ok": true, "slug": slug, "verb": verb})
 	})
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {

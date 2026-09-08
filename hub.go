@@ -42,11 +42,14 @@ type taskMeta struct {
 
 // runState folds a task's nominal status together with real-process liveness
 // into the one label the board trusts. It is pure: the caller supplies whether
-// the interactive session is attached to a live process (liveSession) and
-// whether the --auto pid is alive (autoPidLive). See liveness.go for how those
-// are probed. This exists because tasks.status is set once at launch and never
-// corrected on crash, so it silently lies for zombie sessions.
-func runState(m taskMeta, liveSession, autoPidLive bool) string {
+// the task's harness session is attached to a live process (liveSession),
+// probed by matching its session_id against the running process table (see
+// liveness.go). Both interactive and --auto sessions run as
+// `claude --session-id <id> …`, so this one signal covers both — and unlike a
+// stored pid it can't be spoofed by the OS recycling a dead run's pid onto some
+// unrelated process. This exists because tasks.status is set once at launch and
+// never corrected on crash, so it silently lies for zombie sessions.
+func runState(m taskMeta, liveSession bool) string {
 	switch m.Status {
 	case "done":
 		return "done"
@@ -54,7 +57,7 @@ func runState(m taskMeta, liveSession, autoPidLive bool) string {
 		return "backlog"
 	}
 	// in-progress: trust the OS, not the column.
-	if autoPidLive || liveSession {
+	if liveSession {
 		return "live"
 	}
 	if m.AutoRunStatus != "" {

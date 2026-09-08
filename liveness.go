@@ -1,10 +1,8 @@
 package main
 
 import (
-	"os"
 	"os/exec"
 	"strings"
-	"syscall"
 )
 
 // livenessProbe answers "is this actually running right now?" for the tasks
@@ -31,33 +29,19 @@ func (p livenessProbe) sessionLive(sessionID string) bool {
 	return sessionID != "" && strings.Contains(p.psBlob, sessionID)
 }
 
-// pidAlive reports whether an --auto background run's pid is still alive.
-// Signal 0 performs error checking without delivering a signal.
-func pidAlive(pid int) bool {
-	if pid <= 0 {
-		return false
-	}
-	proc, err := os.FindProcess(pid) // always succeeds on unix
-	if err != nil {
-		return false
-	}
-	return proc.Signal(syscall.Signal(0)) == nil
-}
-
 // taskRunStates classifies every task's real liveness against one process-table
 // snapshot. Liveness is only probed for in-progress tasks (done/backlog can't
-// have a live process by definition), keeping the per-request cost to one ps
-// exec plus a Signal(0) per running task.
+// have a live process by definition), so the whole classification costs one ps
+// exec per request. We deliberately do NOT consult auto_run_pid: pids are
+// recycled by the OS, so a dead run's stale pid can land on an unrelated live
+// process and falsely read as alive. session_id-in-ps is the recycle-proof
+// signal (a live run is `claude --session-id <id> …`, auto or interactive).
 func taskRunStates(tasks map[string]taskMeta) map[string]string {
 	probe := newLivenessProbe()
 	out := make(map[string]string, len(tasks))
 	for slug, m := range tasks {
-		live, autoLive := false, false
-		if m.Status == "in-progress" {
-			live = probe.sessionLive(m.SessionID)
-			autoLive = pidAlive(m.AutoRunPID)
-		}
-		out[slug] = runState(m, live, autoLive)
+		live := m.Status == "in-progress" && probe.sessionLive(m.SessionID)
+		out[slug] = runState(m, live)
 	}
 	return out
 }

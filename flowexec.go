@@ -102,6 +102,17 @@ func (f *flowExec) RunAuto(taskSlug string, fresh bool) error {
 	return nil
 }
 
+// Done marks a task complete via `flow done <slug>`. Used from the UI to clear
+// a zombie (crashed/idle) task that will never reach `flow done` on its own, or
+// to close out a backlog task by hand.
+func (f *flowExec) Done(taskSlug string) error {
+	if taskSlug == "" {
+		return fmt.Errorf("no task")
+	}
+	_, err := f.run("done", taskSlug)
+	return err
+}
+
 // Reply routes the human's answer back to the agent's own session inbox.
 func (f *flowExec) Reply(taskSlug, body string) error {
 	if taskSlug == "" || taskSlug == "~" {
