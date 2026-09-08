@@ -45,6 +45,29 @@ func (f *flowExec) run(args ...string) (string, error) {
 	return s, nil
 }
 
+// runBig is run() with a longer deadline, for commands whose output can be
+// large (a full session transcript). Same FLOW_TERM stripping.
+func (f *flowExec) runBig(args ...string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, f.bin, args...)
+	env := cmd.Environ()
+	out := env[:0]
+	for _, e := range env {
+		if strings.HasPrefix(e, "FLOW_TERM=") {
+			continue
+		}
+		out = append(out, e)
+	}
+	cmd.Env = out
+	b, err := cmd.CombinedOutput()
+	s := string(b)
+	if err != nil {
+		return strings.TrimSpace(s), fmt.Errorf("flow %s: %v", strings.Join(args, " "), err)
+	}
+	return s, nil
+}
+
 // humanAddr is the reserved human assignee. flow is migrating self→user
 // (PR #94); default to "user" but let FLOW_HUMAN override so the writes
 // work against a pre-#94 binary (FLOW_HUMAN=self).

@@ -140,6 +140,65 @@
   .nodemenu .nm-item.done .nm-ic{color:var(--acked);}
   .nodemenu .nm-item.start .nm-ic{color:var(--session);}
   .nodemenu .nm-sub{font:10px "IBM Plex Mono",monospace;color:var(--faint);margin-left:auto;}
+  /* transcript modal — simulated claude interface */
+  .tr-overlay{position:fixed;inset:0;z-index:80;background:color-mix(in srgb,var(--bg) 72%,transparent);
+    backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;padding:26px;}
+  .tr-modal{width:min(860px,94vw);height:min(88vh,900px);display:flex;flex-direction:column;
+    background:var(--panel);border:1px solid var(--panel-line);border-radius:16px;box-shadow:var(--shadow);overflow:hidden;}
+  .tr-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;
+    border-bottom:1px solid var(--panel-line);background:var(--panel-2);}
+  .tr-title{display:flex;align-items:center;gap:10px;min-width:0;}
+  .tr-app{font:600 12px "IBM Plex Mono",monospace;color:var(--hub);letter-spacing:.02em;}
+  .tr-slug{font:600 13px "IBM Plex Sans",sans-serif;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .tr-state{font:10px "IBM Plex Mono",monospace;padding:2px 8px;border-radius:20px;border:1px solid var(--panel-line);color:var(--muted);white-space:nowrap;}
+  .tr-state.live{color:var(--session);border-color:color-mix(in srgb,var(--session) 45%,transparent);}
+  .tr-state.crashed{color:var(--crashed);border-color:color-mix(in srgb,var(--crashed) 45%,transparent);}
+  .tr-tools{display:flex;align-items:center;gap:14px;flex:none;}
+  .tr-toggle{display:flex;align-items:center;gap:5px;font:11px "IBM Plex Mono",monospace;color:var(--muted);cursor:pointer;user-select:none;}
+  .tr-toggle input{accent-color:var(--session);}
+  .tr-x{background:none;border:none;color:var(--faint);cursor:pointer;font-size:15px;}
+  .tr-x:hover{color:var(--ink);}
+  .tr-body{flex:1;overflow-y:auto;padding:18px 20px;display:flex;flex-direction:column;gap:14px;}
+  /* collapsed system/skill injection chip */
+  .tt-sys{align-self:center;width:100%;border:1px dashed var(--panel-line);border-radius:9px;background:transparent;}
+  .tt-sys-hd{display:flex;align-items:center;gap:8px;padding:6px 11px;cursor:pointer;color:var(--faint);font:11px "IBM Plex Mono",monospace;}
+  .tt-sys-hd:hover{color:var(--muted);}
+  .tt-sys-ic{color:var(--hub);}
+  .tt-sys .tt-tool-caret{margin-left:auto;}
+  .tt-sys-body{display:none;border-top:1px dashed var(--panel-line);}
+  .tt-sys.open .tt-sys-body{display:block;}
+  .tt-sys.open .tt-tool-caret{transform:rotate(90deg);}
+  .tr-foot{padding:6px 16px;border-top:1px solid var(--panel-line);font:10px "IBM Plex Mono",monospace;color:var(--faint);background:var(--panel-2);}
+  /* turns */
+  .tt{display:flex;flex-direction:column;max-width:100%;}
+  .tt-role{font:600 9.5px "IBM Plex Mono",monospace;letter-spacing:.09em;text-transform:uppercase;margin-bottom:4px;}
+  .tt.user{align-items:flex-end;}
+  .tt.user .tt-role{color:var(--hub);}
+  .tt.user .tt-bubble{background:color-mix(in srgb,var(--hub) 14%,var(--panel));border:1px solid color-mix(in srgb,var(--hub) 26%,transparent);
+    border-radius:13px 13px 4px 13px;max-width:82%;}
+  .tt.assistant .tt-role{color:var(--session);}
+  .tt.assistant .tt-bubble{background:var(--panel-2);border:1px solid var(--panel-line);border-radius:13px 13px 13px 4px;max-width:88%;}
+  .tt-bubble{padding:10px 13px;font:13px/1.55 "IBM Plex Sans",sans-serif;color:var(--ink);white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere;}
+  .tt-bubble code{font-family:"IBM Plex Mono",monospace;font-size:12px;background:color-mix(in srgb,var(--session) 12%,transparent);padding:1px 4px;border-radius:4px;}
+  .tt-clamp{max-height:150px;overflow:hidden;position:relative;-webkit-mask-image:linear-gradient(#000 70%,transparent);}
+  .tt-more{align-self:flex-start;margin-top:3px;background:none;border:none;color:var(--session);font:600 10.5px "IBM Plex Mono",monospace;cursor:pointer;padding:0;}
+  /* tool call */
+  .tt-tool{border:1px solid var(--panel-line);border-radius:10px;overflow:hidden;background:var(--panel-2);}
+  .tt-tool-hd{display:flex;align-items:center;gap:8px;padding:7px 11px;cursor:pointer;}
+  .tt-tool-hd:hover{background:color-mix(in srgb,var(--session) 6%,transparent);}
+  .tt-tool-ic{color:var(--watch);font-size:11px;}
+  .tt-tool-name{font:600 11px "IBM Plex Mono",monospace;color:var(--watch);flex:none;}
+  .tt-tool-sum{font:11.5px "IBM Plex Mono",monospace;color:var(--muted);flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .tt-tool-caret{color:var(--faint);font-size:10px;transition:transform .15s;}
+  .tt-tool.open .tt-tool-caret{transform:rotate(90deg);}
+  .tt-tool-body{display:none;border-top:1px solid var(--panel-line);}
+  .tt-tool.open .tt-tool-body{display:block;}
+  .tt-pre{margin:0;padding:9px 12px;font:11.5px/1.5 "IBM Plex Mono",monospace;color:var(--ink);white-space:pre-wrap;word-break:break-word;
+    overflow-wrap:anywhere;max-height:340px;overflow:auto;}
+  .tt-out .tt-pre{color:var(--muted);background:color-mix(in srgb,var(--wire) 30%,transparent);}
+  .tt-out.err .tt-pre{color:var(--urgent);}
+  .tt-out-lbl{font:600 9px "IBM Plex Mono",monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);padding:6px 12px 0;}
+  .tt-empty{color:var(--faint);text-align:center;padding:40px;font:12px "IBM Plex Sans",sans-serif;}
 
   /* ---------------- main split ---------------- */
   .main{display:grid;grid-template-columns:1fr 380px;min-height:0;}
@@ -319,6 +378,25 @@
   </div>
   <div class="toast-host" id="toast-host"></div>
   <div class="nodemenu" id="nodemenu" hidden></div>
+
+  <div class="tr-overlay" id="tr-overlay" hidden>
+    <div class="tr-modal">
+      <div class="tr-head">
+        <div class="tr-title">
+          <span class="tr-app">◐ claude</span>
+          <span class="tr-slug" id="tr-slug"></span>
+          <span class="tr-state" id="tr-state"></span>
+        </div>
+        <div class="tr-tools">
+          <label class="tr-toggle"><input type="checkbox" id="tr-output"> tool output</label>
+          <label class="tr-toggle" id="tr-followwrap"><input type="checkbox" id="tr-follow" checked> follow</label>
+          <button class="tr-x" id="tr-close" title="Close (Esc)">✕</button>
+        </div>
+      </div>
+      <div class="tr-body" id="tr-body"></div>
+      <div class="tr-foot" id="tr-foot"></div>
+    </div>
+  </div>
 
   <div class="main">
     <div class="stage">
@@ -780,6 +858,8 @@
     if(d.id==="user"){
       items.push({ic:"✉",label:"Open inbox",cls:"",fn:()=>switchTab("inbox")});
     } else {
+      const live=runOf(d)==="live";
+      items.push({ic:"⧉",label:live?"Watch session":"View transcript",sub:live?"live":"",cls:"",fn:()=>openTranscript(d.id)});
       if(hasThread(d.id)) items.push({ic:"✉",label:"Open thread",cls:"",fn:()=>{switchTab("inbox");openThread(d.id);}});
       if(d.launch==="restart") items.push({ic:"↻",label:"Restart run",sub:"--auto --fresh",cls:"restart",fn:()=>launchTask(d.id,"restart")});
       if(d.launch==="start") items.push({ic:"▷",label:"Start run",sub:"flow do --auto",cls:"start",fn:()=>launchTask(d.id,"start")});
@@ -1074,6 +1154,138 @@
       .catch(e=>{ toast(`couldn't launch ${slug}: ${e.message||e}`, "err");
         if(btnEl){ btnEl.disabled=false; btnEl.textContent=verb; } });
   }
+
+  // ---------- transcript viewer (simulated claude interface) ----------
+  const trOverlay=document.getElementById("tr-overlay");
+  const trBody=document.getElementById("tr-body");
+  const trOutput=document.getElementById("tr-output");
+  const trFollow=document.getElementById("tr-follow");
+  let trSlug=null, trTimer=null, trLoading=false;
+
+  function fmtText(s){ // escape, then light inline markdown (code + bold)
+    let h=esc(s);
+    h=h.replace(/`([^`]+)`/g,'<code>$1</code>');
+    h=h.replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>');
+    return h;
+  }
+  function firstLine(s){ const l=(s||"").split("\n").find(x=>x.trim()); return l?l.trim():"(empty)"; }
+  function toolIcon(name){ return ({Bash:"⌘",Read:"◇",Edit:"✎",Write:"✎",Skill:"❋",Task:"⛓",Monitor:"◉",TaskOutput:"▤",ToolSearch:"⌕"})[name]||"▸"; }
+
+  // Injected content that flow renders as a "User" turn but which is really
+  // machinery (the autonomous bootstrap prompt, a skill body pasted in). Fold
+  // these to a slim chip so the transcript reads like a real Claude session.
+  function systemInjection(body){
+    const b=body||"";
+    if(/^You are an AUTONOMOUS/.test(b)) return {label:"session bootstrap (autonomous)"};
+    if(/^Base directory for this skill:/.test(b)){
+      const m=b.match(/skills\/([A-Za-z0-9._-]+)/); const h=b.match(/\n#\s+([^\n]+)/);
+      return {label:"skill injected: "+(m?m[1]:(h?h[1]:"skill"))};
+    }
+    if(/^<system-reminder>/.test(b)) return {label:"system reminder"};
+    return null;
+  }
+  function sysChip(label,body){
+    const el=document.createElement("div"); el.className="tt-sys";
+    const hd=document.createElement("div"); hd.className="tt-sys-hd";
+    hd.innerHTML=`<span class="tt-sys-ic">⚙</span><span>${esc(label)}</span><span class="tt-tool-caret">▸</span>`;
+    hd.onclick=()=>el.classList.toggle("open");
+    const bd=document.createElement("div"); bd.className="tt-sys-body";
+    bd.innerHTML=`<pre class="tt-pre">${esc(body||"")}</pre>`;
+    el.appendChild(hd); el.appendChild(bd);
+    return el;
+  }
+
+  function bubble(role,body){
+    const el=document.createElement("div"); el.className="tt "+role;
+    el.innerHTML=`<div class="tt-role">${role==="user"?"you":"claude"}</div>`;
+    const b=document.createElement("div"); b.className="tt-bubble"; b.innerHTML=fmtText(body);
+    el.appendChild(b);
+    // clamp very long user/assistant blocks
+    if((body||"").length>900){
+      b.classList.add("tt-clamp");
+      const more=document.createElement("button"); more.className="tt-more"; more.textContent="show more";
+      more.onclick=()=>{ const c=b.classList.toggle("tt-clamp"); more.textContent=c?"show more":"show less"; };
+      el.appendChild(more);
+    }
+    return el;
+  }
+  function toolBlock(t, result){
+    const el=document.createElement("div"); el.className="tt-tool";
+    const hd=document.createElement("div"); hd.className="tt-tool-hd";
+    hd.innerHTML=`<span class="tt-tool-ic">${toolIcon(t.tool)}</span>`+
+      `<span class="tt-tool-name">${esc(t.tool)}</span>`+
+      `<span class="tt-tool-sum">${esc(firstLine(t.body))}</span>`+
+      `<span class="tt-tool-caret">▸</span>`;
+    hd.onclick=()=>el.classList.toggle("open");
+    const bd=document.createElement("div"); bd.className="tt-tool-body";
+    bd.innerHTML=`<pre class="tt-pre">${esc(t.body||"")}</pre>`;
+    if(result){
+      const lbl=document.createElement("div"); lbl.className="tt-out-lbl"; lbl.textContent=result.error?"error":"output";
+      const out=document.createElement("div"); out.className="tt-out"+(result.error?" err":"");
+      out.innerHTML=`<pre class="tt-pre">${esc(result.body||"")}</pre>`;
+      bd.appendChild(lbl); bd.appendChild(out);
+    }
+    el.appendChild(hd); el.appendChild(bd);
+    return el;
+  }
+
+  function renderTranscript(data){
+    const turns=data.turns||[];
+    trBody.innerHTML="";
+    if(!turns.length){ trBody.innerHTML=`<div class="tt-empty">no transcript yet — the session hasn't produced turns.</div>`; return; }
+    for(let i=0;i<turns.length;i++){
+      const t=turns[i];
+      if(t.role==="user"){
+        const sys=systemInjection(t.body);
+        trBody.appendChild(sys ? sysChip(sys.label,t.body) : bubble("user",t.body));
+      }
+      else if(t.role==="assistant"){ trBody.appendChild(bubble("assistant",t.body)); }
+      else if(t.role==="tool"){
+        let result=null;
+        if(turns[i+1] && turns[i+1].role==="result"){ result=turns[i+1]; i++; }
+        trBody.appendChild(toolBlock(t,result));
+      } else if(t.role==="result"){ // stray result with no preceding tool
+        trBody.appendChild(toolBlock({tool:"result",body:""},t));
+      }
+    }
+    // header + foot
+    document.getElementById("tr-slug").textContent=data.name?`${data.name}`:data.slug;
+    const st=document.getElementById("tr-state"); st.textContent=data.run_state||""; st.className="tr-state "+(data.run_state||"");
+    const rs=data.run_state;
+    document.getElementById("tr-foot").textContent=
+      `${turns.length} turns · ${data.slug}${rs==="live"&&trFollow.checked?" · following live":""} · updated ${new Date().toLocaleTimeString()}`;
+  }
+
+  function nearBottom(){ return trBody.scrollHeight-trBody.scrollTop-trBody.clientHeight < 120; }
+  function loadTranscript(forceBottom){
+    if(!trSlug||trLoading) return Promise.resolve();
+    trLoading=true;
+    const stick=forceBottom||nearBottom();
+    return fetch(`/api/transcript/${encodeURIComponent(trSlug)}?compact=${trOutput.checked?0:1}`,{cache:"no-store"})
+      .then(r=>r.json()).then(data=>{
+        if(data.error) throw new Error(data.error);
+        if(trSlug!==data.slug) return; // switched/closed mid-flight
+        renderTranscript(data);
+        if(stick){ const sb=()=>{ trBody.scrollTop=trBody.scrollHeight; };
+          sb(); requestAnimationFrame(sb); setTimeout(sb,130); }
+        // manage live-follow timer based on state + toggle
+        if(data.run_state==="live" && trFollow.checked){ if(!trTimer) trTimer=setInterval(()=>loadTranscript(false), 4000); }
+        else { clearInterval(trTimer); trTimer=null; }
+      }).catch(e=>{ trBody.innerHTML=`<div class="tt-empty">couldn't load transcript: ${esc(e.message||String(e))}</div>`; })
+      .finally(()=>{ trLoading=false; });
+  }
+  function openTranscript(slug){
+    trSlug=slug; trOverlay.hidden=false;
+    document.getElementById("tr-slug").textContent=slug;
+    trBody.innerHTML=`<div class="tt-empty">loading…</div>`;
+    loadTranscript(true);
+  }
+  function closeTranscript(){ trSlug=null; trOverlay.hidden=true; clearInterval(trTimer); trTimer=null; }
+  document.getElementById("tr-close").onclick=closeTranscript;
+  trOverlay.addEventListener("click",e=>{ if(e.target===trOverlay) closeTranscript(); });
+  document.addEventListener("keydown",e=>{ if(e.key==="Escape"&&!trOverlay.hidden) closeTranscript(); });
+  trOutput.onchange=()=>loadTranscript(true);
+  trFollow.onchange=()=>loadTranscript(false);
 
   // ---------- go ----------
   loadLaunchable(); setInterval(loadLaunchable, POLL_MS*3);

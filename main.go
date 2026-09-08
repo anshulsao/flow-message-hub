@@ -125,6 +125,36 @@ func main() {
 		}
 	})
 
+	// GET /api/transcript/{slug}?compact=1 -> the session replayed as chat turns.
+	mux.HandleFunc("/api/transcript/", func(w http.ResponseWriter, r *http.Request) {
+		slug := strings.TrimPrefix(r.URL.Path, "/api/transcript/")
+		if slug == "" {
+			http.NotFound(w, r)
+			return
+		}
+		tasks, err := st.tasks()
+		if err != nil {
+			httpErr(w, err)
+			return
+		}
+		meta, ok := tasks[slug]
+		if !ok {
+			http.Error(w, "no such task", http.StatusNotFound)
+			return
+		}
+		raw, err := fx.Transcript(slug, r.URL.Query().Get("compact") == "1")
+		if err != nil {
+			httpErr(w, err)
+			return
+		}
+		writeJSON(w, map[string]any{
+			"slug":      slug,
+			"name":      meta.Name,
+			"run_state": taskRunStates(tasks)[slug],
+			"turns":     parseTranscript(raw),
+		})
+	})
+
 	mux.HandleFunc("/api/hub", func(w http.ResponseWriter, r *http.Request) {
 		msgs, err := st.messages()
 		if err != nil {
