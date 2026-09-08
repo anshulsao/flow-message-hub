@@ -158,47 +158,52 @@
   .tr-toggle input{accent-color:var(--session);}
   .tr-x{background:none;border:none;color:var(--faint);cursor:pointer;font-size:15px;}
   .tr-x:hover{color:var(--ink);}
-  .tr-body{flex:1;overflow-y:auto;padding:18px 20px;display:flex;flex-direction:column;gap:14px;}
-  /* collapsed system/skill injection chip */
-  .tt-sys{align-self:center;width:100%;border:1px dashed var(--panel-line);border-radius:9px;background:transparent;}
-  .tt-sys-hd{display:flex;align-items:center;gap:8px;padding:6px 11px;cursor:pointer;color:var(--faint);font:11px "IBM Plex Mono",monospace;}
-  .tt-sys-hd:hover{color:var(--muted);}
-  .tt-sys-ic{color:var(--hub);}
-  .tt-sys .tt-tool-caret{margin-left:auto;}
-  .tt-sys-body{display:none;border-top:1px dashed var(--panel-line);}
-  .tt-sys.open .tt-sys-body{display:block;}
-  .tt-sys.open .tt-tool-caret{transform:rotate(90deg);}
+  /* ---- terminal transcript: a single committed dark-terminal look ---- */
+  .tr-body{--t-bg:#0C0F17;--t-ink:#D7DEE8;--t-dim:#78849A;--t-user:#E8B24A;--t-asst:#3ED6C7;
+    --t-tool:#8C78F0;--t-cmd:#7EE0A6;--t-err:#FF6B60;--t-line:#1B2333;
+    flex:1;overflow-y:auto;padding:14px 0;background:var(--t-bg);
+    font:12.5px/1.62 "IBM Plex Mono","SF Mono",ui-monospace,monospace;color:var(--t-ink);}
+  .tr-body::selection,.tr-body ::selection{background:color-mix(in srgb,#3ED6C7 40%,transparent);}
+  .tl{padding:2px 18px;white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere;}
+  .tl .gutter{user-select:none;}
+  /* real human turn: > prompt */
+  .tl.user{color:var(--t-user);padding-top:8px;}
+  .tl.user .gutter{color:var(--t-user);font-weight:700;}
+  /* assistant prose: readable ink with a teal left-bar (no dot, so it never
+     reads like a tool line), roomy line spacing */
+  .tl.asst{color:#E6ECF3;padding:8px 18px 8px 16px;margin:2px 18px;
+    border-left:2px solid color-mix(in srgb,var(--t-asst) 60%,transparent);}
+  .tl code{background:color-mix(in srgb,#3ED6C7 15%,transparent);padding:0 3px;border-radius:3px;}
+  .tl strong{color:#fff;font-weight:600;}
+  .tl-clamp{max-height:150px;overflow:hidden;-webkit-mask-image:linear-gradient(#000 68%,transparent);}
+  .tl-more{margin:2px 0 0 18px;background:none;border:none;color:var(--t-asst);font:inherit;font-size:11px;cursor:pointer;padding:0;}
+  /* tool call: ● Name(summary), collapsible */
+  .tl.tool{cursor:pointer;padding-top:6px;}
+  .tl.tool:hover{background:color-mix(in srgb,#8C78F0 8%,transparent);}
+  .tl.tool .dot{color:var(--t-cmd);}
+  .tl.tool.err .dot{color:var(--t-err);}
+  .tl.tool .tname{color:var(--t-tool);font-weight:700;}
+  .tl.tool .targs{color:var(--t-dim);}
+  .tl.tool .caret{color:var(--t-dim);font-size:10px;}
+  .tl.tool.open .caret{color:var(--t-ink);}
+  /* ⎿ output, dimmed, indented; collapsed preview vs full */
+  .tl-out{padding:0 18px 4px 18px;color:var(--t-dim);white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere;}
+  .tl-out .conn{color:#5A667C;}
+  .tl-out.err{color:var(--t-err);}
+  .tl-tw .tl-detail{display:none;}
+  .tl-tw.open .tl-detail{display:block;}
+  .tl-tw.open .tl-out.preview{display:none;}
+  .tl-cmd{padding:2px 18px 3px 38px;color:var(--t-cmd);white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere;}
+  .tl-full{padding:0 18px 6px 38px;color:var(--t-dim);white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere;max-height:360px;overflow:auto;}
+  .tl-full.err{color:var(--t-err);}
+  /* system/skill injection: dim ⏵ collapsible */
+  .tl.sys{color:var(--t-dim);cursor:pointer;opacity:.85;}
+  .tl.sys:hover{opacity:1;}
+  .tl.sys .caret{font-size:10px;}
+  .tl-sysbody{display:none;padding:0 18px 6px 38px;color:var(--t-dim);white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere;max-height:300px;overflow:auto;}
+  .tl.sys.open + .tl-sysbody{display:block;}
+  .tt-empty{color:var(--t-dim);text-align:center;padding:40px;}
   .tr-foot{padding:6px 16px;border-top:1px solid var(--panel-line);font:10px "IBM Plex Mono",monospace;color:var(--faint);background:var(--panel-2);}
-  /* turns */
-  .tt{display:flex;flex-direction:column;max-width:100%;}
-  .tt-role{font:600 9.5px "IBM Plex Mono",monospace;letter-spacing:.09em;text-transform:uppercase;margin-bottom:4px;}
-  .tt.user{align-items:flex-end;}
-  .tt.user .tt-role{color:var(--hub);}
-  .tt.user .tt-bubble{background:color-mix(in srgb,var(--hub) 14%,var(--panel));border:1px solid color-mix(in srgb,var(--hub) 26%,transparent);
-    border-radius:13px 13px 4px 13px;max-width:82%;}
-  .tt.assistant .tt-role{color:var(--session);}
-  .tt.assistant .tt-bubble{background:var(--panel-2);border:1px solid var(--panel-line);border-radius:13px 13px 13px 4px;max-width:88%;}
-  .tt-bubble{padding:10px 13px;font:13px/1.55 "IBM Plex Sans",sans-serif;color:var(--ink);white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere;}
-  .tt-bubble code{font-family:"IBM Plex Mono",monospace;font-size:12px;background:color-mix(in srgb,var(--session) 12%,transparent);padding:1px 4px;border-radius:4px;}
-  .tt-clamp{max-height:150px;overflow:hidden;position:relative;-webkit-mask-image:linear-gradient(#000 70%,transparent);}
-  .tt-more{align-self:flex-start;margin-top:3px;background:none;border:none;color:var(--session);font:600 10.5px "IBM Plex Mono",monospace;cursor:pointer;padding:0;}
-  /* tool call */
-  .tt-tool{border:1px solid var(--panel-line);border-radius:10px;overflow:hidden;background:var(--panel-2);}
-  .tt-tool-hd{display:flex;align-items:center;gap:8px;padding:7px 11px;cursor:pointer;}
-  .tt-tool-hd:hover{background:color-mix(in srgb,var(--session) 6%,transparent);}
-  .tt-tool-ic{color:var(--watch);font-size:11px;}
-  .tt-tool-name{font:600 11px "IBM Plex Mono",monospace;color:var(--watch);flex:none;}
-  .tt-tool-sum{font:11.5px "IBM Plex Mono",monospace;color:var(--muted);flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-  .tt-tool-caret{color:var(--faint);font-size:10px;transition:transform .15s;}
-  .tt-tool.open .tt-tool-caret{transform:rotate(90deg);}
-  .tt-tool-body{display:none;border-top:1px solid var(--panel-line);}
-  .tt-tool.open .tt-tool-body{display:block;}
-  .tt-pre{margin:0;padding:9px 12px;font:11.5px/1.5 "IBM Plex Mono",monospace;color:var(--ink);white-space:pre-wrap;word-break:break-word;
-    overflow-wrap:anywhere;max-height:340px;overflow:auto;}
-  .tt-out .tt-pre{color:var(--muted);background:color-mix(in srgb,var(--wire) 30%,transparent);}
-  .tt-out.err .tt-pre{color:var(--urgent);}
-  .tt-out-lbl{font:600 9px "IBM Plex Mono",monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);padding:6px 12px 0;}
-  .tt-empty{color:var(--faint);text-align:center;padding:40px;font:12px "IBM Plex Sans",sans-serif;}
 
   /* ---------------- main split ---------------- */
   .main{display:grid;grid-template-columns:1fr 380px;min-height:0;}
@@ -1169,7 +1174,8 @@
     return h;
   }
   function firstLine(s){ const l=(s||"").split("\n").find(x=>x.trim()); return l?l.trim():"(empty)"; }
-  function toolIcon(name){ return ({Bash:"⌘",Read:"◇",Edit:"✎",Write:"✎",Skill:"❋",Task:"⛓",Monitor:"◉",TaskOutput:"▤",ToolSearch:"⌕"})[name]||"▸"; }
+  // one-line summary for the tool header (Bash: the command; else first line)
+  function toolSummary(t){ let s=firstLine(t.body); if(t.tool==="Bash"&&s.startsWith("$ ")) s=s.slice(2); return s; }
 
   // Injected content that flow renders as a "User" turn but which is really
   // machinery (the autonomous bootstrap prompt, a skill body pasted in). Fold
@@ -1184,49 +1190,54 @@
     if(/^<system-reminder>/.test(b)) return {label:"system reminder"};
     return null;
   }
+  // dim, collapsible one-liner for injected machinery
   function sysChip(label,body){
-    const el=document.createElement("div"); el.className="tt-sys";
-    const hd=document.createElement("div"); hd.className="tt-sys-hd";
-    hd.innerHTML=`<span class="tt-sys-ic">⚙</span><span>${esc(label)}</span><span class="tt-tool-caret">▸</span>`;
-    hd.onclick=()=>el.classList.toggle("open");
-    const bd=document.createElement("div"); bd.className="tt-sys-body";
-    bd.innerHTML=`<pre class="tt-pre">${esc(body||"")}</pre>`;
-    el.appendChild(hd); el.appendChild(bd);
-    return el;
+    const frag=document.createDocumentFragment();
+    const hd=document.createElement("div"); hd.className="tl sys";
+    hd.innerHTML=`<span class="gutter">⏵ </span>${esc(label)} <span class="caret">▸</span>`;
+    const bd=document.createElement("div"); bd.className="tl-sysbody"; bd.textContent=body||"";
+    hd.onclick=()=>hd.classList.toggle("open");
+    frag.appendChild(hd); frag.appendChild(bd);
+    return frag;
   }
-
-  function bubble(role,body){
-    const el=document.createElement("div"); el.className="tt "+role;
-    el.innerHTML=`<div class="tt-role">${role==="user"?"you":"claude"}</div>`;
-    const b=document.createElement("div"); b.className="tt-bubble"; b.innerHTML=fmtText(body);
-    el.appendChild(b);
-    // clamp very long user/assistant blocks
-    if((body||"").length>900){
-      b.classList.add("tt-clamp");
-      const more=document.createElement("button"); more.className="tt-more"; more.textContent="show more";
-      more.onclick=()=>{ const c=b.classList.toggle("tt-clamp"); more.textContent=c?"show more":"show less"; };
-      el.appendChild(more);
+  // a user (> ) or assistant (⏺ ) terminal line, clamped if very long
+  function termLine(role,body){
+    const el=document.createElement("div");
+    el.className = role==="user" ? "tl user" : "tl asst";
+    el.innerHTML = role==="user" ? `<span class="gutter">&gt; </span>`+fmtText(body) : fmtText(body);
+    if((body||"").length>1100){
+      const frag=document.createDocumentFragment();
+      el.classList.add("tl-clamp"); frag.appendChild(el);
+      const more=document.createElement("button"); more.className="tl-more"; more.textContent="show more";
+      more.onclick=()=>{ const c=el.classList.toggle("tl-clamp"); more.textContent=c?"show more":"show less"; };
+      frag.appendChild(more); return frag;
     }
     return el;
   }
+  // ● Tool(summary) with ⎿ output; collapsed shows a 1-line preview, click to expand
   function toolBlock(t, result){
-    const el=document.createElement("div"); el.className="tt-tool";
-    const hd=document.createElement("div"); hd.className="tt-tool-hd";
-    hd.innerHTML=`<span class="tt-tool-ic">${toolIcon(t.tool)}</span>`+
-      `<span class="tt-tool-name">${esc(t.tool)}</span>`+
-      `<span class="tt-tool-sum">${esc(firstLine(t.body))}</span>`+
-      `<span class="tt-tool-caret">▸</span>`;
-    hd.onclick=()=>el.classList.toggle("open");
-    const bd=document.createElement("div"); bd.className="tt-tool-body";
-    bd.innerHTML=`<pre class="tt-pre">${esc(t.body||"")}</pre>`;
+    const tw=document.createElement("div"); tw.className="tl-tw";
+    const hd=document.createElement("div"); hd.className="tl tool"+(result&&result.error?" err":"");
+    hd.innerHTML=`<span class="dot">● </span><span class="tname">${esc(t.tool)}</span>`+
+      `<span class="targs"> ${esc(toolSummary(t))}</span> <span class="caret">▸</span>`;
+    hd.onclick=()=>tw.classList.toggle("open");
+    tw.appendChild(hd);
     if(result){
-      const lbl=document.createElement("div"); lbl.className="tt-out-lbl"; lbl.textContent=result.error?"error":"output";
-      const out=document.createElement("div"); out.className="tt-out"+(result.error?" err":"");
-      out.innerHTML=`<pre class="tt-pre">${esc(result.body||"")}</pre>`;
-      bd.appendChild(lbl); bd.appendChild(out);
+      const lines=(result.body||"").split("\n");
+      const pv=document.createElement("div"); pv.className="tl-out preview"+(result.error?" err":"");
+      pv.innerHTML=`<span class="conn">⎿ </span>${esc(lines[0]||"")}`+
+        (lines.length>1?` <span class="conn">… +${lines.length-1} lines</span>`:"");
+      tw.appendChild(pv);
     }
-    el.appendChild(hd); el.appendChild(bd);
-    return el;
+    const det=document.createElement("div"); det.className="tl-detail";
+    const cmd=document.createElement("div"); cmd.className="tl-cmd"; cmd.textContent=t.body||"";
+    det.appendChild(cmd);
+    if(result){
+      const full=document.createElement("div"); full.className="tl-full"+(result.error?" err":"");
+      full.textContent=result.body||""; det.appendChild(full);
+    }
+    tw.appendChild(det);
+    return tw;
   }
 
   function renderTranscript(data){
@@ -1237,9 +1248,9 @@
       const t=turns[i];
       if(t.role==="user"){
         const sys=systemInjection(t.body);
-        trBody.appendChild(sys ? sysChip(sys.label,t.body) : bubble("user",t.body));
+        trBody.appendChild(sys ? sysChip(sys.label,t.body) : termLine("user",t.body));
       }
-      else if(t.role==="assistant"){ trBody.appendChild(bubble("assistant",t.body)); }
+      else if(t.role==="assistant"){ trBody.appendChild(termLine("assistant",t.body)); }
       else if(t.role==="tool"){
         let result=null;
         if(turns[i+1] && turns[i+1].role==="result"){ result=turns[i+1]; i++; }
