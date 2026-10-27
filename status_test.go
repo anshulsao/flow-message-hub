@@ -34,6 +34,8 @@ func TestChangeStatus_MapsToFlowCommands(t *testing.T) {
 		{"done needs confirm when live", chanTask{Slug: "a", Status: "in-progress", SessionID: "s"}, "done", "live", "", 409},
 		{"done without a session explains archive", chanTask{Slug: "a", Status: "backlog"}, "done", "backlog", "", 409},
 		{"same status is a no-op conflict", chanTask{Slug: "a", Status: "done"}, "done", "done", "", 409},
+		{"archive a backlog task", chanTask{Slug: "a", Status: "backlog"}, "archive", "backlog", "archive a", 200},
+		{"archive a live session needs confirm", chanTask{Slug: "a", Status: "in-progress", SessionID: "s"}, "archive", "live", "", 409},
 		{"unknown status rejected", chanTask{Slug: "a", Status: "done"}, "archived", "done", "", 400},
 	}
 	for _, c := range cases {

@@ -15,15 +15,20 @@ type flowRunner interface {
 // Returns an HTTP status code and a message for the UI.
 func changeStatus(r flowRunner, t chanTask, run, target string, confirm bool) (int, string) {
 	switch target {
-	case "backlog", "in-progress", "done":
+	case "backlog", "in-progress", "done", "archive":
 	default:
-		return http.StatusBadRequest, "status must be backlog, in-progress or done"
+		return http.StatusBadRequest, "status must be backlog, in-progress, done or archive"
 	}
 	if t.Status == target {
 		return http.StatusConflict, "already " + target
 	}
 	var args []string
 	switch target {
+	case "archive": // reversible with `flow unarchive`
+		if run == "live" && !confirm {
+			return http.StatusConflict, "session is still running; confirm to archive"
+		}
+		args = []string{"archive", t.Slug}
 	case "done":
 		if t.SessionID == "" {
 			return http.StatusConflict, "never started, so flow can't close it; archive it instead: flow archive " + t.Slug

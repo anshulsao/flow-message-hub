@@ -91,6 +91,20 @@
   .grp-h{font-size:10.5px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--faint);padding:16px 8px 6px;}
   .sub-h{display:flex;align-items:center;gap:6px;font:600 11.5px "IBM Plex Sans",sans-serif;color:var(--muted);padding:8px 10px 4px 12px;}
   .sub-h .n{font:11px "IBM Plex Mono",monospace;color:var(--faint);}
+  .lead{display:flex;align-items:flex-start;justify-content:center;padding-top:6px;}
+  .lead .pick{display:none;margin:0;width:14px;height:14px;accent-color:var(--accent);cursor:pointer;}
+  .lead .dot{margin-top:0!important;}
+  .card:hover .lead .pick,.selecting .lead .pick{display:block;}
+  .card:hover .lead .dot,.selecting .lead .dot{display:none;}
+  .card.picked{background:var(--warn-soft);border-color:var(--accent);}
+  .bulkbar{position:sticky;top:0;z-index:3;display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:8px 14px 0;padding:8px 12px;border:1px solid var(--accent);border-radius:9px;background:var(--panel);font-size:12.5px;}
+  .bulkbar .sep{color:var(--faint);margin:0 4px 0 6px;font-size:12px;}
+  .bb{border:1px solid var(--line);background:var(--panel-2);border-radius:7px;padding:2px 10px;font-size:12px;cursor:pointer;color:var(--ink);}
+  .bb:hover:not(:disabled){border-color:var(--accent);}
+  .bb.ghost{background:none;color:var(--muted);}
+  .bb.warn{border-color:var(--bad);color:var(--bad);background:var(--bad-soft);}
+  .bulkres{flex-basis:100%;font:11.5px "IBM Plex Mono",monospace;color:var(--muted);margin-top:4px;}
+  .bulkres ul{margin:4px 0 0;padding-left:16px;color:var(--bad);}
   .card{display:grid;grid-template-columns:14px 1fr auto;gap:2px 10px;padding:10px 12px;border-radius:9px;border:1px solid transparent;cursor:pointer;margin-bottom:2px;}
   .card:hover{background:var(--hover);}
   .card.on{background:var(--sel);border-color:var(--line);}
@@ -191,6 +205,7 @@
   .seg button:hover:not(:disabled){color:var(--ink);background:var(--hover);}
   .seg button.cur{background:var(--warn-soft);color:var(--ink);font-weight:600;cursor:default;}
   .seg button:disabled{opacity:.6;}
+  .segmsg button[data-status]{background:var(--panel-2);color:var(--ink);border-color:var(--line);}
   .segrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
   .segmsg{font:11.5px "IBM Plex Mono",monospace;color:var(--faint);margin-top:10px;}
   .segmsg.err{color:var(--bad);}
@@ -277,7 +292,7 @@
   const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 
   // ---------- state (selection lives in the URL hash) ----------
-  const st = { channels: [], live: [], cards: [], channel: null, thread: null, sess: null, filter: "all", showEarlier: false, briefOpen: false, lastOk: 0, seen: {}, showDone: false, statusMsg: null, busy: false, prompt: null, drafts: {}, pending: null, cmpSlug: null, sending: false };
+  const st = { channels: [], live: [], cards: [], channel: null, thread: null, sess: null, filter: "all", showEarlier: false, briefOpen: false, lastOk: 0, seen: {}, showDone: false, statusMsg: null, busy: false, prompt: null, drafts: {}, pending: null, cmpSlug: null, sending: false, picked: new Set(), lastPick: null, bulk: null };
   try { st.showDone = localStorage.getItem("flowhub-showdone") === "1"; } catch(e) {}
   try { st.seen = JSON.parse(localStorage.getItem("flowhub-seen") || "{}"); } catch(e) {}
   function readHash(){ const p = new URLSearchParams(location.hash.slice(1)); return { c: p.get("c"), t: p.get("t"), v: p.get("v"), x: p.get("x") === "1" }; }
@@ -428,14 +443,44 @@
       c.priority === "high" ? `<span class="pri-high">high</span>` : c.priority ? c.priority : "",
       c.waiting_on ? `waiting on: ${esc(c.waiting_on)}` : "",
     ].filter(Boolean).join(" · ");
-    return `<div class="card ${sel.t===c.slug?"on":""}" data-t="${esc(c.slug)}">
-      <span class="dot ${s.dot}"></span>
+    const picked = st.picked.has(c.slug);
+    return `<div class="card ${sel.t===c.slug?"on":""} ${picked?"picked":""}" data-t="${esc(c.slug)}">
+      <span class="lead"><span class="dot ${s.dot}"></span><input type="checkbox" class="pick" data-pick="${esc(c.slug)}" ${picked?"checked":""} title="Select (Shift-click for a range)"></span>
       <span class="slug">${esc(c.slug)}</span>
       <span class="pill ${s.pill}">${esc(s.label)}</span>
       ${c.name && c.name !== c.slug ? `<span class="name">${esc(c.name)}</span>` : ""}
       ${c.latest ? `<span class="latest">${esc(c.latest)}</span>` : ""}
       <span class="foot">${foot || "no activity yet"}</span>
     </div>`;
+  }
+  function visibleSlugs(){ return [...document.querySelectorAll("#mid .card[data-t]")].map(e => e.dataset.t); }
+  function bulkBarHTML(){
+    const n = st.picked.size, b = st.bulk;
+    if (!n && !b) return "";
+    let res = "";
+    if (b) {
+      const bad = b.results.filter(r => !r.ok), conf = bad.filter(r => r.needs_confirm), arch = bad.filter(r => /archive it instead/.test(r.message || ""));
+      res = `<div class="bulkres">${b.busy ? "updating…" : `✓ ${b.ok} ${b.status === "archive" ? "archived" : "moved to " + esc(b.status)}`}${bad.length ? ` · ${bad.length} not changed` : ""}
+        ${conf.length ? `<button class="bb warn" id="bulkconfirm">Confirm ${conf.length} live anyway</button>` : ""}
+        ${arch.length ? `<button class="bb" id="bulkarchivethese">Archive these ${arch.length}</button>` : ""}
+        ${bad.length ? `<ul>${bad.map(r => `<li><b>${esc(r.slug)}</b>: ${esc(r.message)}</li>`).join("")}</ul>` : ""}</div>`;
+    }
+    return `<div class="bulkbar">${n ? `<b>${n} selected</b><span class="sep">move to</span>
+      ${[["backlog","Backlog"],["in-progress","In progress"],["done","Done"]].map(([k,l]) => `<button class="bb" data-bulk="${k}" ${b && b.busy ? "disabled" : ""}>${l}</button>`).join("")}
+      <span class="sep">or</span><button class="bb" data-bulk="archive" ${b && b.busy ? "disabled" : ""} title="Hide from views; undo with flow unarchive">Archive</button>
+      <button class="bb ghost" id="bulkall">Select all shown</button><button class="bb ghost" id="bulkclear">Clear</button>`
+      : `<button class="bb ghost" id="bulkclear">Dismiss</button>`}${res}</div>`;
+  }
+  async function bulkStatus(status, slugs, confirm){
+    st.bulk = { status, busy: true, ok: 0, results: [] }; renderMid();
+    try {
+      const r = await fetch("/api/status-bulk", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ slugs, status, confirm: !!confirm }) });
+      if (!r.ok) { st.bulk = { status, ok: 0, results: [{ slug: "request", ok: false, message: (await r.text()).trim() }] }; renderMid(); return; }
+      const d = await r.json();
+      st.bulk = { status, ok: d.ok, results: d.results };
+      for (const x of d.results) if (x.ok) st.picked.delete(x.slug);   // keep failures selected
+    } catch (e) { st.bulk = { status, ok: 0, results: [{ slug: "request", ok: false, message: e.message }] }; }
+    await refresh();
   }
   function renderMid(){
     const ch = st.channel; if (!ch) return;
@@ -471,7 +516,8 @@
           : FILTERS.filter(([k]) => k !== "done").map(([k,l]) => `<button class="flt ${f===k?"on":""}" data-f="${k}">${l}<span class="c">${counts[k]}</span></button>`).join("")}
           <span class="tgl ${st.showDone ? "on" : ""}" id="donetgl" title="Switch between open and done tasks"><span class="sw"></span>Show done</span></div>
       </div>
-      <div class="list">${body || `<div class="placeholder">nothing here</div>`}</div>`;
+      ${bulkBarHTML()}
+      <div class="list ${st.picked.size ? "selecting" : ""}">${body || `<div class="placeholder">nothing here</div>`}</div>`;
   }
 
   // ---------- render: thread ----------
@@ -522,7 +568,8 @@
         ${th.name ? `<div class="name">${esc(th.name)}</div>` : ""}
         <div class="facts">${projectSelectHTML(th)}${facts.map(f => `<span class="fact">${esc(f)}</span>`).join("")}</div>
         <div class="segrow"><div class="seg">${[["backlog","Backlog"],["in-progress","In progress"],["done","Done"]].map(([k,l]) =>
-          `<button data-status="${k}" class="${th.status===k?"cur":""}" ${st.busy?"disabled":""}>${l}</button>`).join("")}</div>${statusMsgHTML(th.slug)}</div>
+          `<button data-status="${k}" class="${th.status===k?"cur":""}" ${st.busy?"disabled":""}>${l}</button>`).join("")}</div>
+          <button class="bb" data-status="archive" ${st.busy?"disabled":""} title="Hide from views; undo with flow unarchive">Archive</button>${statusMsgHTML(th.slug)}</div>
       </div>
       ${th.brief ? `<div class="brief ${longBrief && !st.briefOpen ? "clip" : ""}"><div class="lbl">Brief</div><div class="md">${md(th.brief)}</div>
         ${longBrief ? `<button class="tog" id="brieftog">${st.briefOpen ? "show less" : "show full brief"}</button>` : ""}</div>` : ""}
@@ -635,15 +682,16 @@
   }
   function statusMsgHTML(slug){
     const m = st.statusMsg; if (!m || m.slug !== slug) return "";
-    return `<span class="segmsg ${m.kind}">${esc(m.text)}${m.confirm ? `<button id="confirmdone">Mark done anyway</button>` : ""}</span>`;
+    return `<span class="segmsg ${m.kind}">${esc(m.text)}${m.confirm ? `<button id="confirmdone">Confirm anyway</button>` : ""}${/archive it instead/.test(m.text) ? `<button data-status="archive">Archive instead</button>` : ""}</span>`;
   }
   async function setStatus(slug, status, confirm){
     st.busy = true; st.statusMsg = { slug, text: "saving…", kind: "" }; renderThread();
     try {
       const r = await fetch("/api/status/" + encodeURIComponent(slug), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status, confirm: !!confirm }) });
       const d = await r.json().catch(() => ({ message: "HTTP " + r.status }));
-      if (r.ok) st.statusMsg = { slug, text: "✓ " + status, kind: "ok" };
-      else st.statusMsg = { slug, text: d.message || ("HTTP " + r.status), kind: "err", confirm: r.status === 409 && /confirm/.test(d.message || "") };
+      if (r.ok && status === "archive") { st.statusMsg = null; sel.t = null; st.thread = null; st.sess = null; writeHash(sel); $("#thread").hidden = true; $("#composer").hidden = true; }
+      else if (r.ok) st.statusMsg = { slug, text: "✓ " + status, kind: "ok" };
+      else st.statusMsg = { slug, target: status, text: d.message || ("HTTP " + r.status), kind: "err", confirm: r.status === 409 && /confirm/.test(d.message || "") };
     } catch (e) { st.statusMsg = { slug, text: "failed: " + e.message, kind: "err" }; }
     st.busy = false;
     await refresh();
@@ -658,7 +706,7 @@
   $("#side").addEventListener("click", e => {
     const r = e.target.closest(".row"); if (!r) return;
     const ch = r.dataset.ch, live = r.dataset.live;
-    if (ch && ch !== sel.c) { sel.c = ch; loadChannel(ch, true); }
+    if (ch && ch !== sel.c) { sel.c = ch; st.picked.clear(); st.bulk = null; loadChannel(ch, true); }
     if (live) { sel.t = live; loadThread(live, true); }
     $("#side").classList.remove("show");
     writeHash(sel); renderSide();
@@ -667,6 +715,21 @@
     const fb = e.target.closest("[data-f]"); if (fb) { st.filter = fb.dataset.f; renderMid(); return; }
     if (e.target.closest("#donetgl")) { st.showDone = !st.showDone; try { localStorage.setItem("flowhub-showdone", st.showDone ? "1" : "0"); } catch(e) {} renderMid(); return; }
     if (e.target.closest("[data-more]")) { st.showEarlier = true; renderMid(); return; }
+    const pk = e.target.closest("[data-pick]");
+    if (pk) {
+      const slug = pk.dataset.pick, vis = visibleSlugs();
+      if (e.shiftKey && st.lastPick && vis.includes(st.lastPick)) {
+        const [a, b] = [vis.indexOf(st.lastPick), vis.indexOf(slug)].sort((x, y) => x - y);
+        vis.slice(a, b + 1).forEach(s => st.picked.add(s));
+      } else if (st.picked.has(slug)) st.picked.delete(slug); else st.picked.add(slug);
+      st.lastPick = slug; renderMid(); return;
+    }
+    const bb = e.target.closest("[data-bulk]"); if (bb) { bulkStatus(bb.dataset.bulk, [...st.picked], false); return; }
+    if (e.target.closest("#bulkconfirm")) { const b = st.bulk; bulkStatus(b.status, b.results.filter(r => r.needs_confirm).map(r => r.slug), true); return; }
+    if (e.target.closest("#bulkarchivethese")) { const b = st.bulk; bulkStatus("archive", b.results.filter(r => !r.ok && /archive it instead/.test(r.message || "")).map(r => r.slug), false); return; }
+    if (e.target.closest("#bulkall")) { visibleSlugs().forEach(s => st.picked.add(s)); renderMid(); return; }
+    if (e.target.closest("#bulkclear")) { st.picked.clear(); st.bulk = null; renderMid(); return; }
+    if (e.target.closest(".bulkbar")) return;
     const c = e.target.closest("[data-t]"); if (!c) return;
     sel.t = c.dataset.t; writeHash(sel); renderMid(); renderSide(); loadThread(sel.t, true);
   });
@@ -677,7 +740,7 @@
     if (e.target.closest("#earlier")) loadEarlier();
     const sb = e.target.closest("[data-status]");
     if (sb && !sb.classList.contains("cur") && !st.busy && st.thread) setStatus(st.thread.slug, sb.dataset.status, false);
-    if (e.target.closest("#confirmdone") && st.thread) setStatus(st.thread.slug, "done", true);
+    if (e.target.closest("#confirmdone") && st.thread) setStatus(st.thread.slug, (st.statusMsg && st.statusMsg.target) || "done", true);
     if (e.target.closest("#jump")) { const el = $("#thread"); el.scrollTop = el.scrollHeight; }
   });
   $("#thread").addEventListener("scroll", updateJump);

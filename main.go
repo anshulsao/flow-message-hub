@@ -272,6 +272,7 @@ func main() {
 	registerOpenRoute(mux, st, fx)
 	registerProjectRoutes(mux, st, fx)
 	registerResumeRoute(mux, st, fx)
+	registerBulkRoute(mux, st, fx)
 	lister := &agentsLister{}
 	registerPromptRoute(mux, st, promptDeps_{agents: lister.list, tty: ttyOfClaude, sender: itermSender{}})
 
