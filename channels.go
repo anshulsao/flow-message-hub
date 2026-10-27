@@ -17,7 +17,8 @@ const (
 )
 
 type project struct {
-	Slug, Name string
+	Slug string `json:"slug"`
+	Name string `json:"name"`
 }
 
 // chanTask is the slice of a tasks row the Channels view needs.

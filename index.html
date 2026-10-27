@@ -183,6 +183,8 @@
   .thread{overflow-x:hidden;}
   .msg > div, .ms details{min-width:0;}
   .msg .tx pre{max-width:100%;overflow-x:auto;}
+  .projsel{background:var(--panel-2);color:var(--ink);cursor:pointer;font-family:"IBM Plex Mono",monospace;font-size:11px;padding:1px 4px;}
+  .projsel:hover{border-color:var(--accent);}
   .seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;margin-top:10px;}
   .seg button{background:var(--panel-2);border:0;border-right:1px solid var(--line);padding:3px 11px;font-size:12px;color:var(--muted);cursor:pointer;}
   .seg button:last-child{border-right:0;}
@@ -496,11 +498,11 @@
       <div class="tx ${you ? "" : "md"}">${you ? esc(it.body) : md(it.body)}</div></div></div>`;
   }
   function renderThread(){
+    if (document.activeElement && document.activeElement.id === "projsel") return; // don't close an open dropdown
     const th = st.thread, el = $("#thread"); if (!th) { el.hidden = true; return; }
     el.hidden = false;
     const s = stateOf(th), sess = st.sess || { older: [], latest: [], found: false };
     const facts = [
-      th.project ? `#${th.project}` : "no project",
       th.priority ? `${th.priority} priority` : "",
       th.auto ? `auto ${th.auto_status || ""}${th.auto_started ? " · " + dur(th.auto_started, th.auto_finished) : ""}` : "",
       th.waiting_on ? `waiting on: ${th.waiting_on}` : "",
@@ -518,7 +520,7 @@
       <div class="th-h">
         <div class="slug"><span class="dot ${s.dot}"></span>${esc(th.slug)}<span class="pill ${s.pill}">${esc(s.label)}</span><span class="acts"><button class="ibtn" id="expandth" title="${sel.x ? "Collapse (Esc)" : "Expand to full pane"}">${sel.x ? "⤡" : "⤢"}</button><button class="ibtn" id="closeth" title="Close">✕</button></span></div>
         ${th.name ? `<div class="name">${esc(th.name)}</div>` : ""}
-        <div class="facts">${facts.map(f => `<span class="fact">${esc(f)}</span>`).join("")}</div>
+        <div class="facts">${projectSelectHTML(th)}${facts.map(f => `<span class="fact">${esc(f)}</span>`).join("")}</div>
         <div class="segrow"><div class="seg">${[["backlog","Backlog"],["in-progress","In progress"],["done","Done"]].map(([k,l]) =>
           `<button data-status="${k}" class="${th.status===k?"cur":""}" ${st.busy?"disabled":""}>${l}</button>`).join("")}</div>${statusMsgHTML(th.slug)}</div>
       </div>
@@ -580,6 +582,29 @@
     } catch (e) { flashHint("failed: " + e.message, "err"); }
     st.sending = false; renderComposer();
   }
+  function projectSelectHTML(th){
+    const ps = [...(st.projects || [])].sort((a, b) => a.name.localeCompare(b.name));
+    if (th.project && !ps.some(p => p.slug === th.project)) ps.unshift({ slug: th.project, name: th.project });
+    return `<select class="fact projsel" id="projsel" title="Move to another project" ${st.busy ? "disabled" : ""}>
+      <option value="" ${!th.project ? "selected" : ""}>~ no project</option>
+      ${ps.map(p => `<option value="${esc(p.slug)}" ${p.slug === th.project ? "selected" : ""}>#${esc(p.name)}</option>`).join("")}
+    </select>`;
+  }
+  async function loadProjects(){ try { st.projects = await getJSON("/api/projects"); } catch (e) {} }
+  async function setProject(slug, project){
+    st.busy = true; st.statusMsg = { slug, text: "moving…", kind: "" }; document.activeElement.blur(); renderThread();
+    try {
+      const r = await fetch("/api/task-project/" + encodeURIComponent(slug), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ project }) });
+      const d = await r.json().catch(() => ({ message: "HTTP " + r.status }));
+      if (r.ok) {
+        st.statusMsg = { slug, text: "✓ moved to " + (project ? "#" + project : "no project"), kind: "ok" };
+        sel.c = project || "_floating"; writeHash(sel);   // follow the task to its new channel
+      } else st.statusMsg = { slug, text: d.message || ("HTTP " + r.status), kind: "err" };
+    } catch (e) { st.statusMsg = { slug, text: "failed: " + e.message, kind: "err" }; }
+    st.busy = false;
+    await refresh();
+    setTimeout(() => { if (st.statusMsg && st.statusMsg.kind === "ok") { st.statusMsg = null; renderThread(); } }, 3000);
+  }
   function statusMsgHTML(slug){
     const m = st.statusMsg; if (!m || m.slug !== slug) return "";
     return `<span class="segmsg ${m.kind}">${esc(m.text)}${m.confirm ? `<button id="confirmdone">Mark done anyway</button>` : ""}</span>`;
@@ -628,6 +653,8 @@
     if (e.target.closest("#jump")) { const el = $("#thread"); el.scrollTop = el.scrollHeight; }
   });
   $("#thread").addEventListener("scroll", updateJump);
+  $("#thread").addEventListener("change", e => { if (e.target.id === "projsel" && st.thread) setProject(st.thread.slug, e.target.value); });
+  $("#thread").addEventListener("focusin", e => { if (e.target.id === "projsel") loadProjects(); });
   $("#cmptext").addEventListener("input", () => { autoGrow(); if (st.cmpSlug) st.drafts[st.cmpSlug] = $("#cmptext").value; $("#cmpsend").disabled = !(st.prompt && st.prompt.ok) || st.sending || !$("#cmptext").value.trim(); });
   $("#cmptext").addEventListener("keydown", e => {
     if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); sendPrompt(); }
@@ -685,6 +712,7 @@
     if (sel.t) loadThread(sel.t, true); else $("#thread").hidden = true;
     renderSide();
   });
+  loadProjects();
   showView(sel.v === "graph" ? "graph" : "channels");
   document.querySelector(".ch").classList.toggle("expanded", !!(sel.x && sel.t));
   refresh();

@@ -270,6 +270,7 @@ func main() {
 	registerChannelRoutes(mux, st, filepath.Dir(*dbPath), filepath.Join(home, ".claude", "projects"))
 	registerStatusRoute(mux, st, fx)
 	registerOpenRoute(mux, st, fx)
+	registerProjectRoutes(mux, st, fx)
 	lister := &agentsLister{}
 	registerPromptRoute(mux, st, promptDeps_{agents: lister.list, tty: ttyOfClaude, sender: itermSender{}})
 
