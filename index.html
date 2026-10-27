@@ -3,1305 +3,462 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Flow Message Hub — Live</title>
+<title>Flow Hub</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
 <style>
-  /* ------- tokens: dark-first control-room, with a light variant ------- */
   :root{
-    --bg:#0B0E14; --bg-grid:rgba(120,150,190,.05);
-    --panel:#111725; --panel-2:#0E1420; --panel-line:#1E2839;
+    --bg:#0B0E14; --panel:#111725; --panel-2:#0E1420; --line:#1E2839; --hover:#151D2D; --sel:#18243A;
     --ink:#EAF0F8; --muted:#93A2B8; --faint:#5C6A80;
-    --hub:#F0A32E; --hub-glow:rgba(240,163,46,.55);
-    --session:#2FD4C6; --session-glow:rgba(47,212,198,.5);
-    --target:#7C8AA0; --target-glow:rgba(124,138,160,.35);
-    --acked:#3CCB72; --acked-glow:rgba(60,203,114,.6);
-    --delivered:#4CA3FF; --delivered-glow:rgba(76,163,255,.55);
-    --wait:#F0A32E; --wait-glow:rgba(240,163,46,.7);
-    --urgent:#FF5D52; --urgent-glow:rgba(255,93,82,.8);
-    --crashed:#E8873B; --crashed-glow:rgba(232,135,59,.55);
-    --watch:#7E84F2; --nudge:#FF5D52;
-    --wire:#26324A;
-    --shadow:0 1px 0 rgba(255,255,255,.03), 0 10px 40px rgba(0,0,0,.5);
+    --accent:#F0A32E; --live:#2FD4C6; --done:#3CCB72; --info:#4CA3FF;
+    --warn:#F0A32E; --bad:#E8873B; --urgent:#FF5D52; --watch:#7E84F2;
+    --live-soft:rgba(47,212,198,.12); --warn-soft:rgba(240,163,46,.12); --bad-soft:rgba(232,135,59,.14);
+    --done-soft:rgba(60,203,114,.12); --info-soft:rgba(76,163,255,.12);
   }
   :root[data-theme="light"]{
-    --bg:#EEF1F6; --bg-grid:rgba(40,70,120,.05);
-    --panel:#FFFFFF; --panel-2:#F5F8FC; --panel-line:#E1E7F0;
+    --bg:#EEF1F6; --panel:#FFFFFF; --panel-2:#F5F8FC; --line:#E1E7F0; --hover:#F0F4FA; --sel:#E6EEF9;
     --ink:#141C2B; --muted:#54617A; --faint:#8A97AD;
-    --hub:#C97A1F; --hub-glow:rgba(201,122,31,.4);
-    --session:#0E938B; --session-glow:rgba(14,147,139,.35);
-    --target:#8794A6; --target-glow:rgba(135,148,166,.3);
-    --acked:#1F9B54; --acked-glow:rgba(31,155,84,.45);
-    --delivered:#2C6FD6; --delivered-glow:rgba(44,111,214,.4);
-    --wait:#C97A1F; --wait-glow:rgba(201,122,31,.5);
-    --urgent:#DA3B2E; --urgent-glow:rgba(218,59,46,.55);
-    --crashed:#B45309; --crashed-glow:rgba(180,83,9,.4);
-    --watch:#5E63C9; --nudge:#DA3B2E;
-    --wire:#CAD4E2;
-    --shadow:0 1px 2px rgba(20,30,45,.06), 0 12px 34px rgba(20,30,45,.12);
+    --accent:#C97A1F; --live:#0E938B; --done:#1F9B54; --info:#2C6FD6;
+    --warn:#B86E12; --bad:#B45309; --urgent:#DA3B2E; --watch:#5E63C9;
+    --live-soft:rgba(14,147,139,.10); --warn-soft:rgba(201,122,31,.12); --bad-soft:rgba(180,83,9,.10);
+    --done-soft:rgba(31,155,84,.10); --info-soft:rgba(44,111,214,.10);
   }
-
   *{box-sizing:border-box;}
   [hidden]{display:none!important;}
   html,body{height:100%;margin:0;overflow:hidden;}
-  body{
-    background:var(--bg);color:var(--ink);
-    font-family:"IBM Plex Sans",system-ui,sans-serif;
-    -webkit-font-smoothing:antialiased;
-  }
+  body{background:var(--bg);color:var(--ink);font:14px/1.45 "IBM Plex Sans",system-ui,sans-serif;-webkit-font-smoothing:antialiased;}
   .mono{font-family:"IBM Plex Mono",monospace;}
+  button{font:inherit;color:inherit;}
 
-  .app{display:grid;grid-template-rows:auto 1fr;height:100%;}
-
-  /* ---------------- top bar ---------------- */
-  .topbar{
-    display:flex;align-items:center;gap:20px;flex-wrap:wrap;
-    padding:12px 18px;border-bottom:1px solid var(--panel-line);
-    background:linear-gradient(180deg,var(--panel),var(--panel-2));
-  }
-  .brand{display:flex;align-items:center;gap:11px;min-width:0;}
-  .logo{
-    width:30px;height:30px;border-radius:8px;flex:none;position:relative;
-    background:radial-gradient(circle at 30% 30%,var(--hub),#b06a12);
-    box-shadow:0 0 0 1px rgba(255,255,255,.08),0 0 18px var(--hub-glow);
-  }
-  .logo::after{content:"";position:absolute;inset:8px;border-radius:50%;
-    border:2px solid rgba(0,0,0,.35);border-top-color:transparent;animation:spin 3.5s linear infinite;}
-  @keyframes spin{to{transform:rotate(360deg);}}
-  .brand h1{font-size:15px;font-weight:600;margin:0;letter-spacing:.01em;white-space:nowrap;}
-  .brand .tag{font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--session);margin-top:1px;}
-
-  .chips{display:flex;gap:9px;flex-wrap:wrap;margin-left:4px;}
-  .chip{
-    display:flex;align-items:baseline;gap:7px;padding:6px 12px;border-radius:9px;
-    background:var(--panel-2);border:1px solid var(--panel-line);
-  }
-  .chip .n{font-family:"IBM Plex Mono",monospace;font-size:17px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1;}
-  .chip .l{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);}
-
-  .status{margin-left:auto;display:flex;align-items:center;gap:16px;}
-  .conn{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);}
-  .beacon{width:9px;height:9px;border-radius:50%;background:var(--acked);box-shadow:0 0 0 0 var(--acked-glow);animation:beacon 1.6s ease-out infinite;}
-  .beacon.stale{background:var(--urgent);animation:none;}
-  @keyframes beacon{0%{box-shadow:0 0 0 0 var(--acked-glow);}70%{box-shadow:0 0 0 9px rgba(60,203,114,0);}100%{box-shadow:0 0 0 0 rgba(60,203,114,0);}}
-  .tbtn{background:var(--panel-2);border:1px solid var(--panel-line);color:var(--muted);
-    width:32px;height:32px;border-radius:8px;cursor:pointer;font-size:15px;display:grid;place-items:center;}
-  .tbtn:hover{color:var(--ink);border-color:var(--session);}
-  #showall{width:auto;padding:0 10px;gap:5px;font-family:"IBM Plex Mono",monospace;font-size:11px;white-space:nowrap;}
-  #showall.on{color:var(--ink);border-color:var(--session);}
-  #launch{width:auto;padding:0 10px;gap:5px;font-family:"IBM Plex Mono",monospace;font-size:11px;white-space:nowrap;}
-  #launch.on{color:var(--ink);border-color:var(--crashed);}
-  /* launcher popover */
-  .launcher{position:absolute;top:56px;right:16px;z-index:40;width:320px;max-height:60vh;display:flex;flex-direction:column;
-    background:var(--panel);border:1px solid var(--panel-line);border-radius:12px;box-shadow:var(--shadow);overflow:hidden;}
-  .lc-head{display:flex;align-items:center;justify-content:space-between;padding:11px 13px;border-bottom:1px solid var(--panel-line);
-    font:600 12.5px "IBM Plex Sans",sans-serif;color:var(--ink);}
-  .lc-mono{font-family:"IBM Plex Mono",monospace;font-size:10.5px;color:var(--muted);}
-  .lc-x{background:none;border:none;color:var(--faint);cursor:pointer;font-size:13px;}
-  .lc-x:hover{color:var(--ink);}
-  .lc-filter{margin:9px 11px 6px;padding:7px 10px;border-radius:9px;border:1px solid var(--panel-line);background:var(--panel-2);
-    color:var(--ink);font:12px "IBM Plex Sans",sans-serif;}
-  .lc-filter:focus{outline:none;border-color:var(--session);}
-  .lc-list{overflow-y:auto;padding:2px 8px 9px;display:flex;flex-direction:column;gap:4px;}
-  .lc-row{display:flex;align-items:center;gap:9px;padding:7px 8px;border-radius:9px;}
-  .lc-row:hover{background:var(--panel-2);}
-  .lc-dot{width:8px;height:8px;border-radius:50%;flex:none;}
-  .lc-dot.crashed{background:var(--crashed);} .lc-dot.backlog{background:var(--target);}
-  .lc-name{flex:1;min-width:0;font:12px "IBM Plex Sans",sans-serif;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-  .lc-slug{font-family:"IBM Plex Mono",monospace;font-size:10px;color:var(--faint);}
-  .lc-go{flex:none;border:1px solid var(--panel-line);border-radius:7px;padding:4px 9px;background:transparent;cursor:pointer;
-    font:600 10.5px "IBM Plex Mono",monospace;color:var(--muted);}
-  .lc-go:hover{color:var(--ink);border-color:var(--session);}
-  .lc-go.restart{color:var(--crashed);border-color:color-mix(in srgb,var(--crashed) 45%,transparent);}
-  .lc-go[disabled]{opacity:.5;cursor:default;}
-  .lc-done{flex:none;border:1px solid var(--panel-line);border-radius:7px;padding:4px 8px;background:transparent;cursor:pointer;
-    font:600 10.5px "IBM Plex Mono",monospace;color:var(--faint);}
-  .lc-done:hover{color:var(--acked);border-color:color-mix(in srgb,var(--acked) 45%,transparent);}
-  .lc-done[disabled]{opacity:.5;cursor:default;}
-  .lc-empty{padding:16px;text-align:center;color:var(--faint);font:12px "IBM Plex Sans",sans-serif;}
-  .lc-group{padding:8px 10px 3px;font:600 9px "IBM Plex Mono",monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);}
-  /* toast */
-  .toast-host{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);z-index:60;display:flex;flex-direction:column;gap:8px;align-items:center;}
-  .toast{padding:9px 15px;border-radius:10px;background:var(--panel);border:1px solid var(--panel-line);box-shadow:var(--shadow);
-    color:var(--ink);font:12.5px "IBM Plex Sans",sans-serif;opacity:0;transform:translateY(8px);transition:opacity .2s,transform .2s;}
-  .toast.on{opacity:1;transform:translateY(0);}
-  .toast.err{border-color:var(--urgent);color:var(--urgent);}
-  .toast.ok{border-color:color-mix(in srgb,var(--session) 45%,transparent);}
-  /* node context menu */
-  .nodemenu{position:fixed;z-index:70;min-width:186px;padding:5px;display:flex;flex-direction:column;gap:1px;
-    background:var(--panel);border:1px solid var(--panel-line);border-radius:11px;box-shadow:var(--shadow);}
-  .nodemenu .nm-head{padding:6px 9px 7px;border-bottom:1px solid var(--panel-line);margin-bottom:4px;}
-  .nodemenu .nm-slug{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--session);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-  .nodemenu .nm-state{font:10px "IBM Plex Mono",monospace;color:var(--faint);margin-top:2px;}
-  .nodemenu .nm-item{display:flex;align-items:center;gap:9px;padding:8px 9px;border-radius:8px;cursor:pointer;
-    font:12.5px "IBM Plex Sans",sans-serif;color:var(--ink);background:none;border:none;text-align:left;width:100%;}
-  .nodemenu .nm-item:hover{background:var(--panel-2);}
-  .nodemenu .nm-item .nm-ic{width:15px;text-align:center;flex:none;font-size:12px;}
-  .nodemenu .nm-item.restart .nm-ic{color:var(--crashed);}
-  .nodemenu .nm-item.done .nm-ic{color:var(--acked);}
-  .nodemenu .nm-item.start .nm-ic{color:var(--session);}
-  .nodemenu .nm-sub{font:10px "IBM Plex Mono",monospace;color:var(--faint);margin-left:auto;}
-  /* transcript modal — simulated claude interface */
-  .tr-overlay{position:fixed;inset:0;z-index:80;background:color-mix(in srgb,var(--bg) 72%,transparent);
-    backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;padding:26px;}
-  .tr-modal{width:min(860px,94vw);height:min(88vh,900px);display:flex;flex-direction:column;
-    background:var(--panel);border:1px solid var(--panel-line);border-radius:16px;box-shadow:var(--shadow);overflow:hidden;}
-  .tr-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;
-    border-bottom:1px solid var(--panel-line);background:var(--panel-2);}
-  .tr-title{display:flex;align-items:center;gap:10px;min-width:0;}
-  .tr-app{font:600 12px "IBM Plex Mono",monospace;color:var(--hub);letter-spacing:.02em;}
-  .tr-slug{font:600 13px "IBM Plex Sans",sans-serif;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-  .tr-state{font:10px "IBM Plex Mono",monospace;padding:2px 8px;border-radius:20px;border:1px solid var(--panel-line);color:var(--muted);white-space:nowrap;}
-  .tr-state.live{color:var(--session);border-color:color-mix(in srgb,var(--session) 45%,transparent);}
-  .tr-state.crashed{color:var(--crashed);border-color:color-mix(in srgb,var(--crashed) 45%,transparent);}
-  .tr-tools{display:flex;align-items:center;gap:14px;flex:none;}
-  .tr-toggle{display:flex;align-items:center;gap:5px;font:11px "IBM Plex Mono",monospace;color:var(--muted);cursor:pointer;user-select:none;}
-  .tr-toggle input{accent-color:var(--session);}
-  .tr-x{background:none;border:none;color:var(--faint);cursor:pointer;font-size:15px;}
-  .tr-x:hover{color:var(--ink);}
-  /* ---- terminal transcript: a single committed dark-terminal look ---- */
-  .tr-body{--t-bg:#0C0F17;--t-ink:#D7DEE8;--t-dim:#78849A;--t-user:#E8B24A;--t-asst:#3ED6C7;
-    --t-tool:#8C78F0;--t-cmd:#7EE0A6;--t-err:#FF6B60;--t-line:#1B2333;
-    flex:1;overflow-y:auto;padding:14px 0;background:var(--t-bg);
-    font:12.5px/1.62 "IBM Plex Mono","SF Mono",ui-monospace,monospace;color:var(--t-ink);}
-  .tr-body::selection,.tr-body ::selection{background:color-mix(in srgb,#3ED6C7 40%,transparent);}
-  .tl{padding:2px 18px;white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere;}
-  .tl .gutter{user-select:none;}
-  /* real human turn: > prompt */
-  .tl.user{color:var(--t-user);padding-top:8px;}
-  .tl.user .gutter{color:var(--t-user);font-weight:700;}
-  /* assistant prose: readable ink with a teal left-bar (no dot, so it never
-     reads like a tool line), roomy line spacing */
-  .tl.asst{color:#E6ECF3;padding:8px 18px 8px 16px;margin:2px 18px;
-    border-left:2px solid color-mix(in srgb,var(--t-asst) 60%,transparent);}
-  .tl code{background:color-mix(in srgb,#3ED6C7 15%,transparent);padding:0 3px;border-radius:3px;}
-  .tl strong{color:#fff;font-weight:600;}
-  .tl-clamp{max-height:150px;overflow:hidden;-webkit-mask-image:linear-gradient(#000 68%,transparent);}
-  .tl-more{margin:2px 0 0 18px;background:none;border:none;color:var(--t-asst);font:inherit;font-size:11px;cursor:pointer;padding:0;}
-  /* tool call: ● Name(summary), collapsible */
-  .tl.tool{cursor:pointer;padding-top:6px;}
-  .tl.tool:hover{background:color-mix(in srgb,#8C78F0 8%,transparent);}
-  .tl.tool .dot{color:var(--t-cmd);}
-  .tl.tool.err .dot{color:var(--t-err);}
-  .tl.tool .tname{color:var(--t-tool);font-weight:700;}
-  .tl.tool .targs{color:var(--t-dim);}
-  .tl.tool .caret{color:var(--t-dim);font-size:10px;}
-  .tl.tool.open .caret{color:var(--t-ink);}
-  /* ⎿ output, dimmed, indented; collapsed preview vs full */
-  .tl-out{padding:0 18px 4px 18px;color:var(--t-dim);white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere;}
-  .tl-out .conn{color:#5A667C;}
-  .tl-out.err{color:var(--t-err);}
-  .tl-tw .tl-detail{display:none;}
-  .tl-tw.open .tl-detail{display:block;}
-  .tl-tw.open .tl-out.preview{display:none;}
-  .tl-cmd{padding:2px 18px 3px 38px;color:var(--t-cmd);white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere;}
-  .tl-full{padding:0 18px 6px 38px;color:var(--t-dim);white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere;max-height:360px;overflow:auto;}
-  .tl-full.err{color:var(--t-err);}
-  /* system/skill injection: dim ⏵ collapsible */
-  .tl.sys{color:var(--t-dim);cursor:pointer;opacity:.85;}
-  .tl.sys:hover{opacity:1;}
-  .tl.sys .caret{font-size:10px;}
-  .tl-sysbody{display:none;padding:0 18px 6px 38px;color:var(--t-dim);white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere;max-height:300px;overflow:auto;}
-  .tl.sys.open + .tl-sysbody{display:block;}
-  .tt-empty{color:var(--t-dim);text-align:center;padding:40px;}
-  .tr-foot{padding:6px 16px;border-top:1px solid var(--panel-line);font:10px "IBM Plex Mono",monospace;color:var(--faint);background:var(--panel-2);}
-
-  /* ---------------- main split ---------------- */
-  .main{display:grid;grid-template-columns:1fr 380px;min-height:0;}
-  .stage{position:relative;min-width:0;overflow:hidden;
-    background:
-      radial-gradient(1100px 700px at 45% 42%, rgba(47,212,198,.06), transparent 60%),
-      linear-gradient(0deg,var(--bg-grid) 1px,transparent 1px) 0 0/32px 32px,
-      linear-gradient(90deg,var(--bg-grid) 1px,transparent 1px) 0 0/32px 32px,
-      var(--bg);
-  }
-  svg#graph{width:100%;height:100%;display:block;cursor:grab;}
-  svg#graph:active{cursor:grabbing;}
-
-  .legend{position:absolute;left:16px;bottom:14px;display:flex;flex-direction:column;gap:7px;
-    padding:11px 13px;border-radius:11px;background:color-mix(in srgb,var(--panel) 82%,transparent);
-    border:1px solid var(--panel-line);backdrop-filter:blur(8px);font-size:11.5px;color:var(--muted);}
-  .legend .row{display:flex;align-items:center;gap:8px;}
-  .legend .sw{width:16px;height:16px;border-radius:5px;flex:none;}
-  .legend .ln{width:20px;height:0;border-top:2px solid;flex:none;}
-  .hint{position:absolute;right:16px;bottom:14px;font-size:11px;color:var(--faint);}
-
-  /* node label + tooltip */
-  .g-label{font-family:"IBM Plex Mono",monospace;font-size:11px;fill:var(--ink);pointer-events:none;paint-order:stroke;
-    stroke:var(--bg);stroke-width:3.5px;stroke-linejoin:round;}
-  .g-sub{font-family:"IBM Plex Mono",monospace;font-size:9px;fill:var(--faint);pointer-events:none;}
-
-  .tip{position:absolute;pointer-events:none;z-index:5;max-width:280px;
-    background:var(--panel);border:1px solid var(--panel-line);border-radius:10px;
-    padding:9px 11px;box-shadow:var(--shadow);font-size:12px;opacity:0;transform:translateY(4px);transition:opacity .12s,transform .12s;}
-  .tip.on{opacity:1;transform:translateY(0);}
-  .tip .t-name{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--session);margin-bottom:3px;}
-  .tip .t-desc{color:var(--muted);line-height:1.4;}
-  .tip .t-meta{color:var(--faint);margin-top:4px;font-size:11px;}
-
-  /* ---------------- feed ---------------- */
-  .feed{border-left:1px solid var(--panel-line);background:var(--panel-2);display:grid;grid-template-rows:auto 1fr;min-height:0;}
-  .feed-head{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--panel-line);}
-  .feed-head h2{font-size:13px;font-weight:600;margin:0;letter-spacing:.02em;}
-  .feed-head .live-dot{width:7px;height:7px;border-radius:50%;background:var(--urgent);box-shadow:0 0 8px var(--urgent);}
-  .feed-head .c{margin-left:auto;font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--faint);}
-  .feed-list{overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:10px;scrollbar-width:thin;}
-  .feed-list::-webkit-scrollbar{width:8px;}
-  .feed-list::-webkit-scrollbar-thumb{background:var(--panel-line);border-radius:4px;}
-
-  .card{position:relative;padding:11px 13px 11px 15px;border-radius:11px;background:var(--panel);
-    border:1px solid var(--panel-line);box-shadow:var(--shadow);}
-  .card::before{content:"";position:absolute;left:0;top:10px;bottom:10px;width:3px;border-radius:3px;background:var(--wire);}
-  .card.acked::before{background:var(--acked);}
-  .card.delivered::before{background:var(--delivered);}
-  .card.pending::before{background:var(--wait);}
-  .card.urgent::before{background:var(--urgent);}
-  .card.new{animation:cardIn .5s cubic-bezier(.2,.8,.2,1);}
-  @keyframes cardIn{from{opacity:0;transform:translateX(18px) scale(.98);}to{opacity:1;transform:none;}}
-  .card.flash{animation:cardFlash 1.1s ease-out;}
-  @keyframes cardFlash{0%{box-shadow:0 0 0 2px var(--wait-glow),var(--shadow);}100%{box-shadow:var(--shadow);}}
-  .c-route{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-family:"IBM Plex Mono",monospace;font-size:11.5px;margin-bottom:6px;}
-  .c-node{padding:2px 7px;border-radius:6px;background:color-mix(in srgb,var(--session) 15%,transparent);color:var(--session);}
-  .c-node.you{background:color-mix(in srgb,var(--hub) 18%,transparent);color:var(--hub);}
-  .c-arrow{color:var(--faint);}
-  .c-time{margin-left:auto;color:var(--faint);}
-  .c-body{font-size:12.5px;line-height:1.45;color:var(--ink);opacity:.92;}
-  .c-foot{margin-top:7px;display:flex;align-items:center;gap:8px;}
-  .pill{font-family:"IBM Plex Mono",monospace;font-size:10px;font-weight:600;padding:2px 8px;border-radius:999px;letter-spacing:.03em;text-transform:uppercase;}
-  .pill.acked{color:var(--acked);background:color-mix(in srgb,var(--acked) 16%,transparent);}
-  .pill.delivered{color:var(--delivered);background:color-mix(in srgb,var(--delivered) 18%,transparent);}
-  .pill.pending{color:var(--wait);background:color-mix(in srgb,var(--wait) 18%,transparent);}
-  .pill.urgent{color:var(--urgent);background:color-mix(in srgb,var(--urgent) 18%,transparent);}
-  .c-wait{font-family:"IBM Plex Mono",monospace;font-size:10.5px;color:var(--faint);}
-  .feed-empty{color:var(--faint);text-align:center;padding:40px 20px;font-family:"IBM Plex Mono",monospace;font-size:12px;}
-
-  /* ---------------- tabs + inbox ---------------- */
-  .panel-tabs{display:flex;gap:2px;padding:8px 10px 0;border-bottom:1px solid var(--panel-line);background:var(--panel-2);}
-  .tab{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:10px 8px;border:none;background:transparent;color:var(--muted);font:600 12.5px "IBM Plex Sans",sans-serif;letter-spacing:.02em;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;}
+  .app{display:grid;grid-template-rows:48px 1fr;height:100%;}
+  .top{display:flex;align-items:center;gap:18px;padding:0 16px;border-bottom:1px solid var(--line);background:var(--panel);}
+  .brand{display:flex;align-items:center;gap:9px;font-weight:700;letter-spacing:.01em;}
+  .logo{width:18px;height:18px;border-radius:5px;background:conic-gradient(from 210deg,var(--accent),var(--live),var(--accent));}
+  .tabs{display:flex;gap:2px;height:100%;}
+  .tab{background:none;border:0;border-bottom:2px solid transparent;padding:0 14px;cursor:pointer;color:var(--muted);font-weight:500;}
   .tab:hover{color:var(--ink);}
-  .tab.active{color:var(--ink);border-bottom-color:var(--session);}
-  .tab .live-dot{width:7px;height:7px;border-radius:50%;background:var(--urgent);box-shadow:0 0 8px var(--urgent);}
-  .tab .c{font-family:"IBM Plex Mono",monospace;font-size:10.5px;color:var(--faint);font-weight:500;}
-  .tab .badge{min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--urgent);color:#fff;font:700 11px "IBM Plex Mono",monospace;display:inline-flex;align-items:center;justify-content:center;}
-  .tab .badge.calm{background:var(--delivered);}
-  .panel-body{position:relative;min-height:0;display:grid;}
-  .panel-body>div{grid-area:1/1;min-height:0;min-width:0;}
-  .inbox{min-height:0;min-width:0;display:grid;overflow:hidden;}
-  .inbox>*{min-height:0;min-width:0;}
-  .inbox-list{overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:9px;scrollbar-width:thin;}
-  .inbox-list::-webkit-scrollbar{width:8px;}.inbox-list::-webkit-scrollbar-thumb{background:var(--panel-line);border-radius:4px;}
-  .inbox-empty{color:var(--faint);text-align:center;padding:40px 20px;font-family:"IBM Plex Mono",monospace;font-size:12px;}
+  .tab.on{color:var(--ink);border-bottom-color:var(--accent);}
+  .top .right{margin-left:auto;display:flex;align-items:center;gap:12px;}
+  .conn{font-size:11.5px;color:var(--faint);display:flex;align-items:center;gap:6px;}
+  .beacon{width:7px;height:7px;border-radius:50%;background:var(--faint);}
+  .beacon.ok{background:var(--done);box-shadow:0 0 0 3px var(--done-soft);}
+  .beacon.bad{background:var(--urgent);}
+  .ibtn{background:var(--panel-2);border:1px solid var(--line);border-radius:7px;height:28px;min-width:28px;cursor:pointer;color:var(--muted);}
+  .ibtn:hover{color:var(--ink);}
 
-  .tcard{position:relative;text-align:left;padding:11px 13px 11px 15px;border-radius:11px;background:var(--panel);border:1px solid var(--panel-line);box-shadow:var(--shadow);cursor:pointer;}
-  .tcard::before{content:"";position:absolute;left:0;top:10px;bottom:10px;width:3px;border-radius:3px;background:var(--wire);}
-  .tcard.unread::before{background:var(--wait);}
-  .tcard.owe-reply::before{background:var(--delivered);}
-  .tcard.answered::before{background:var(--acked);}
-  .tcard.closed::before{background:var(--wire);}
-  .tcard.closed{opacity:.72;}
-  .tcard .th-closed{font-size:11px;opacity:.7;}
-  .tcard .th-top{display:flex;align-items:center;gap:8px;margin-bottom:3px;}
-  .tcard .th-name{font:600 12.5px "IBM Plex Mono",monospace;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-  .tcard .th-time{margin-left:auto;font:500 10.5px "IBM Plex Mono",monospace;color:var(--faint);white-space:nowrap;}
-  .tcard .th-prev{font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-  .tcard.unread .th-prev{color:var(--ink);font-weight:500;}
-  .tcard .th-badge{min-width:17px;height:17px;padding:0 5px;border-radius:9px;background:var(--wait);color:#1b1205;font:700 10.5px "IBM Plex Mono",monospace;display:inline-flex;align-items:center;justify-content:center;}
-  .tcard .th-star{color:var(--delivered);font-size:13px;}
-  .tcard .th-chk{color:var(--acked);font-size:12px;}
-  .tcard .th-urgent{color:var(--urgent);font:700 9px "IBM Plex Mono",monospace;letter-spacing:.05em;}
+  .view{min-height:0;}
+  #graphview iframe{border:0;width:100%;height:100%;display:block;background:var(--bg);}
 
-  .thread{display:grid;grid-template-rows:auto 1fr auto;min-height:0;}
-  .thread-head{display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:1px solid var(--panel-line);background:var(--panel-2);}
-  .thread-head .back{background:none;border:none;color:var(--muted);cursor:pointer;font-size:17px;padding:0 4px;line-height:1;}
-  .thread-head .back:hover{color:var(--ink);}
-  .thread-head .tn{font:600 13px "IBM Plex Mono",monospace;color:var(--ink);}
-  .thread-head .ts{font-size:11px;color:var(--faint);margin-left:auto;}
-  .thread-msgs{overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:9px;scrollbar-width:thin;}
-  .bubble{max-width:84%;padding:8px 11px;border-radius:12px;font-size:12.5px;line-height:1.45;white-space:pre-wrap;word-break:break-word;}
-  .bubble .b-meta{font:500 9.5px "IBM Plex Mono",monospace;color:var(--faint);margin-top:4px;}
-  .bubble.in{align-self:flex-start;background:var(--panel);border:1px solid var(--panel-line);border-bottom-left-radius:4px;}
-  .bubble.in.urgent{border-color:var(--urgent);}
-  .bubble.out{align-self:flex-end;background:color-mix(in srgb,var(--session) 16%,var(--panel));border:1px solid color-mix(in srgb,var(--session) 32%,transparent);border-bottom-right-radius:4px;}
-  .bubble.out.sending{opacity:.6;}
-  .bubble.out.failed{border-color:var(--urgent);}
-  .thread-composer{border-top:1px solid var(--panel-line);padding:10px;display:flex;gap:8px;align-items:flex-end;}
-  .thread-composer textarea{flex:1;resize:none;height:38px;max-height:120px;padding:9px 11px;border-radius:10px;border:1px solid var(--panel-line);background:var(--panel);color:var(--ink);font:400 12.5px "IBM Plex Sans",sans-serif;}
-  .thread-composer textarea:focus{outline:none;border-color:var(--session);}
-  .thread-composer button{border:none;border-radius:10px;height:38px;padding:0 15px;background:var(--session);color:#04201e;font:600 12.5px "IBM Plex Sans",sans-serif;cursor:pointer;}
-  .thread-composer button:disabled{opacity:.45;cursor:default;}
-  .composer-locked{border-top:1px solid var(--panel-line);padding:12px 14px;font:400 12px "IBM Plex Mono",monospace;color:var(--faint);text-align:center;}
-  .tick{font-family:"IBM Plex Mono",monospace;font-weight:600;}
-  .tick.sent{color:var(--faint);}
-  .tick.delivered{color:var(--delivered);}
-  .tick.read{color:var(--acked);}
-  .newbtn{display:flex;align-items:center;justify-content:center;gap:8px;padding:11px;border-radius:11px;border:1px dashed var(--panel-line);background:transparent;color:var(--session);font:600 12.5px "IBM Plex Sans",sans-serif;cursor:pointer;}
-  .newbtn:hover{border-color:var(--session);background:color-mix(in srgb,var(--session) 9%,transparent);}
-  .compose-pick{padding:12px 14px;border-bottom:1px solid var(--panel-line);background:var(--panel-2);display:flex;flex-direction:column;gap:6px;min-width:0;}
-  .compose-pick label{font:600 10.5px "IBM Plex Mono",monospace;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);}
-  .compose-pick select{width:100%;max-width:100%;box-sizing:border-box;padding:8px 10px;border-radius:9px;border:1px solid var(--panel-line);background:var(--panel);color:var(--ink);font:400 12.5px "IBM Plex Sans",sans-serif;}
-  .compose-pick select:focus{outline:none;border-color:var(--session);}
-  .compose-hint{padding:18px;color:var(--faint);font-size:12px;text-align:center;line-height:1.5;}
-  .compose{display:grid;grid-template-rows:auto auto 1fr auto;min-height:0;}
+  /* ---------- channels: 3 panes ---------- */
+  .ch{display:grid;grid-template-columns:250px minmax(0,1fr) minmax(360px,460px);height:100%;}
+  .pane{min-height:0;overflow:auto;}
+  .side{background:var(--panel-2);border-right:1px solid var(--line);padding:12px 8px 24px;}
+  .sec-h{font-size:10.5px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--faint);padding:12px 10px 6px;display:flex;align-items:center;gap:6px;}
+  .sec-h .n{margin-left:auto;font-family:"IBM Plex Mono",monospace;letter-spacing:0;}
+  .find{width:calc(100% - 12px);margin:0 6px 4px;height:30px;border-radius:7px;border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:0 10px;font:13px "IBM Plex Sans",sans-serif;}
+  .find::placeholder{color:var(--faint);}
+  .row{display:flex;align-items:center;gap:8px;padding:5px 10px;border-radius:6px;cursor:pointer;color:var(--muted);white-space:nowrap;}
+  .row:hover{background:var(--hover);color:var(--ink);}
+  .row.on{background:var(--sel);color:var(--ink);}
+  .row .nm{overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0;}
+  .row.unread .nm{color:var(--ink);font-weight:600;}
+  .row .hash{color:var(--faint);font-family:"IBM Plex Mono",monospace;}
+  .row .meta{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--faint);}
+  .badge{font-family:"IBM Plex Mono",monospace;font-size:10.5px;font-weight:600;border-radius:999px;padding:0 6px;line-height:17px;}
+  .badge.att{background:var(--bad-soft);color:var(--bad);}
+  .badge.live{background:var(--live-soft);color:var(--live);}
+  .empty-s{color:var(--faint);font-size:12px;padding:4px 10px;}
 
-  @media (max-width:860px){
-    .main{grid-template-columns:1fr;grid-template-rows:1fr 300px;}
-    .feed{border-left:none;border-top:1px solid var(--panel-line);}
-    .chips{display:none;}
-  }
-  @media (prefers-reduced-motion:reduce){
-    .logo::after,.beacon{animation:none;}
-    .card.new,.card.flash{animation:none;}
-  }
+  .dot{width:8px;height:8px;border-radius:50%;flex:none;}
+  .dot.live{background:var(--live);box-shadow:0 0 0 3px var(--live-soft);animation:pulse 1.8s ease-in-out infinite;}
+  .dot.idle{background:var(--info);}
+  .dot.crashed{background:var(--bad);}
+  .dot.att{background:var(--warn);}
+  .dot.done{background:var(--done);}
+  .dot.backlog{background:transparent;border:1.5px solid var(--faint);}
+  @keyframes pulse{50%{box-shadow:0 0 0 6px transparent;}}
+
+  /* middle */
+  .mid{background:var(--bg);}
+  .mid-h{position:sticky;top:0;z-index:2;background:var(--bg);border-bottom:1px solid var(--line);padding:14px 20px 10px;}
+  .mid-h h2{margin:0;font-size:17px;display:flex;align-items:baseline;gap:8px;}
+  .mid-h h2 .hash{color:var(--faint);font-weight:500;}
+  .mid-h .sub{font-size:12px;color:var(--faint);margin-top:2px;font-family:"IBM Plex Mono",monospace;}
+  .filters{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap;}
+  .flt{border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:2px 11px;font-size:12px;cursor:pointer;color:var(--muted);}
+  .flt.on{border-color:var(--accent);color:var(--ink);background:var(--warn-soft);}
+  .flt .c{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--faint);margin-left:4px;}
+  .list{padding:6px 14px 40px;}
+  .grp-h{font-size:10.5px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--faint);padding:16px 8px 6px;}
+  .card{display:grid;grid-template-columns:14px 1fr auto;gap:2px 10px;padding:10px 12px;border-radius:9px;border:1px solid transparent;cursor:pointer;margin-bottom:2px;}
+  .card:hover{background:var(--hover);}
+  .card.on{background:var(--sel);border-color:var(--line);}
+  .card .dot{margin-top:6px;}
+  .card .slug{font-family:"IBM Plex Mono",monospace;font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .card .name{grid-column:2/4;color:var(--muted);font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .card .latest{grid-column:2/4;font-size:13px;color:var(--ink);opacity:.9;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin-top:3px;}
+  .card .latest:before{content:"\201C";color:var(--faint);}
+  .card .latest:after{content:"\201D";color:var(--faint);}
+  .card .foot{grid-column:2/4;font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--faint);margin-top:4px;display:flex;gap:10px;flex-wrap:wrap;}
+  .pill{font-family:"IBM Plex Mono",monospace;font-size:10.5px;font-weight:600;padding:1px 8px;border-radius:999px;white-space:nowrap;align-self:start;}
+  .pill.live{background:var(--live-soft);color:var(--live);}
+  .pill.idle{background:var(--info-soft);color:var(--info);}
+  .pill.att{background:var(--warn-soft);color:var(--warn);}
+  .pill.crashed{background:var(--bad-soft);color:var(--bad);}
+  .pill.done{background:var(--done-soft);color:var(--done);}
+  .pill.backlog{background:var(--hover);color:var(--faint);}
+  .pri-high{color:var(--urgent);}
+  .fold{display:flex;flex-wrap:wrap;gap:4px 12px;padding:8px 12px;font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--muted);}
+  .fold a{color:var(--muted);text-decoration:none;cursor:pointer;}
+  .fold a:hover{color:var(--ink);text-decoration:underline;}
+  .fold .more{color:var(--accent);}
+  .placeholder{color:var(--faint);text-align:center;padding:80px 20px;font-family:"IBM Plex Mono",monospace;font-size:12.5px;}
+
+  /* thread */
+  .thread{background:var(--panel);border-left:1px solid var(--line);}
+  .th-h{position:sticky;top:0;z-index:2;background:var(--panel);border-bottom:1px solid var(--line);padding:14px 18px 12px;}
+  .th-h .slug{font-family:"IBM Plex Mono",monospace;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;}
+  .th-h .slug .x{margin-left:auto;}
+  .th-h .name{color:var(--muted);font-size:13px;margin-top:3px;}
+  .th-h .facts{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;}
+  .fact{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:1px 7px;}
+  .brief{margin:14px 18px 6px;padding:12px 14px;border:1px solid var(--line);border-radius:9px;background:var(--panel-2);font-size:13px;position:relative;}
+  .brief .lbl{font-size:10.5px;font-weight:600;letter-spacing:.09em;color:var(--faint);text-transform:uppercase;margin-bottom:6px;}
+  .brief.clip .md{max-height:190px;overflow:hidden;mask-image:linear-gradient(180deg,#000 70%,transparent);-webkit-mask-image:linear-gradient(180deg,#000 70%,transparent);}
+  .brief .tog{background:none;border:0;color:var(--accent);cursor:pointer;padding:6px 0 0;font-size:12px;}
+  .md h1,.md h2,.md h3,.md h4{font-size:13.5px;margin:10px 0 4px;}
+  .md h1:first-child,.md h2:first-child,.md h3:first-child{margin-top:0;}
+  .md p{margin:4px 0;}
+  .md ul{margin:4px 0;padding-left:18px;}
+  .md code{font-family:"IBM Plex Mono",monospace;font-size:12px;background:var(--hover);padding:0 4px;border-radius:4px;}
+  .md pre{font-family:"IBM Plex Mono",monospace;font-size:11.5px;background:var(--hover);padding:8px;border-radius:6px;overflow:auto;white-space:pre;}
+  .ev{display:grid;grid-template-columns:44px 1fr;gap:10px;padding:8px 18px;}
+  .ev:hover{background:var(--panel-2);}
+  .ev .t{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--faint);padding-top:2px;text-align:right;}
+  .ev .k{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);flex-wrap:wrap;}
+  .tagk{font-family:"IBM Plex Mono",monospace;font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;padding:0 6px;border-radius:4px;line-height:16px;}
+  .tagk.auto{background:var(--live-soft);color:var(--live);}
+  .tagk.note{background:var(--hover);color:var(--muted);}
+  .tagk.message{background:var(--info-soft);color:var(--info);}
+  .tagk.broadcast{background:rgba(126,132,242,.14);color:var(--watch);}
+  .tagk.urgent{background:var(--urgent);color:#fff;}
+  .ev .who{font-family:"IBM Plex Mono",monospace;font-size:11.5px;}
+  .ev .body{font-size:13px;margin-top:3px;white-space:pre-wrap;word-break:break-word;}
+  .ev .body.you{border-left:2px solid var(--accent);padding-left:8px;}
+  .ev details summary{cursor:pointer;font-size:13px;margin-top:2px;list-style:none;}
+  .ev details summary::-webkit-details-marker{display:none;}
+  .ev details summary:after{content:"  show";color:var(--accent);font-size:11.5px;}
+  .ev details[open] summary:after{content:"  hide";}
+  .ev details .md{margin-top:6px;padding:8px 10px;border-radius:7px;background:var(--panel-2);border:1px solid var(--line);font-size:12.5px;}
+  .day{font-size:10.5px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--faint);padding:14px 18px 4px;}
+  .readonly{font-size:11.5px;color:var(--faint);text-align:center;padding:14px 18px 30px;font-family:"IBM Plex Mono",monospace;}
+
+  @media (max-width:1100px){ .ch{grid-template-columns:220px minmax(0,1fr);} .thread{position:fixed;right:0;top:48px;bottom:0;width:min(460px,100%);box-shadow:-20px 0 40px rgba(0,0,0,.35);z-index:5;} }
+  @media (max-width:720px){ .ch{grid-template-columns:1fr;} .side{display:none;} .side.show{display:block;position:fixed;inset:48px 0 0 0;z-index:6;} #menu{display:inline-block!important;} }
 </style>
 </head>
 <body>
 <div class="app">
-  <div class="topbar">
-    <div class="brand">
-      <div class="logo"></div>
-      <div>
-        <h1>Flow Message Hub</h1>
-        <div class="tag">bus · live telemetry</div>
-      </div>
-    </div>
-    <div class="chips" id="chips"></div>
-    <div class="status">
-      <div class="conn"><span class="beacon" id="beacon"></span><span id="conn" class="mono">connecting…</span></div>
-      <button class="tbtn" id="launch" title="Start a backlog task or restart a crashed run headlessly">▷ run</button>
-      <button class="tbtn" id="showall" title="Show sessions that finished more than 3 days ago" hidden></button>
-      <button class="tbtn" id="theme" title="Toggle theme">◐</button>
+  <div class="top">
+    <button class="ibtn" id="menu" style="display:none" title="Channels">☰</button>
+    <div class="brand"><div class="logo"></div>flow</div>
+    <nav class="tabs">
+      <button class="tab on" data-view="channels">Channels</button>
+      <button class="tab" data-view="graph">Graph</button>
+    </nav>
+    <div class="right">
+      <div class="conn"><span class="beacon" id="beacon"></span><span id="conn">connecting</span></div>
+      <button class="ibtn" id="theme" title="Toggle theme">◐</button>
     </div>
   </div>
 
-  <div class="launcher" id="launcher" hidden>
-    <div class="lc-head">
-      <span>Launch <span class="lc-mono">flow do --auto</span></span>
-      <button class="lc-x" id="lc-close" title="Close">✕</button>
-    </div>
-    <input class="lc-filter" id="lc-filter" placeholder="filter tasks…" autocomplete="off">
-    <div class="lc-list" id="lc-list"></div>
-    <div class="lc-empty" id="lc-empty" hidden>no launchable tasks</div>
-  </div>
-  <div class="toast-host" id="toast-host"></div>
-  <div class="nodemenu" id="nodemenu" hidden></div>
-
-  <div class="tr-overlay" id="tr-overlay" hidden>
-    <div class="tr-modal">
-      <div class="tr-head">
-        <div class="tr-title">
-          <span class="tr-app">◐ claude</span>
-          <span class="tr-slug" id="tr-slug"></span>
-          <span class="tr-state" id="tr-state"></span>
-        </div>
-        <div class="tr-tools">
-          <label class="tr-toggle"><input type="checkbox" id="tr-output"> tool output</label>
-          <label class="tr-toggle" id="tr-followwrap"><input type="checkbox" id="tr-follow" checked> follow</label>
-          <button class="tr-x" id="tr-close" title="Close (Esc)">✕</button>
-        </div>
-      </div>
-      <div class="tr-body" id="tr-body"></div>
-      <div class="tr-foot" id="tr-foot"></div>
+  <div class="view" id="channelsview">
+    <div class="ch">
+      <aside class="pane side" id="side">
+        <input class="find" id="find" placeholder="Find a channel" autocomplete="off">
+        <div class="sec-h"><span>Live now</span><span class="n" id="livecount">0</span></div>
+        <div id="live"></div>
+        <div class="sec-h"><span>Channels</span><span class="n" id="chcount">0</span></div>
+        <div id="channels"></div>
+      </aside>
+      <main class="pane mid" id="mid">
+        <div class="placeholder">pick a channel</div>
+      </main>
+      <section class="pane thread" id="thread" hidden></section>
     </div>
   </div>
-
-  <div class="main">
-    <div class="stage">
-      <svg id="graph"></svg>
-      <div class="legend" id="legend">
-        <div class="row"><span class="sw" style="background:var(--hub)"></span> you</div>
-        <div class="row"><span class="sw" style="background:var(--session)"></span> live session <span style="color:var(--faint)">(running now)</span></div>
-        <div class="row"><span class="sw" style="background:var(--session);opacity:.42"></span> idle <span style="color:var(--faint)">(detached, resumable)</span></div>
-        <div class="row"><span class="sw" style="background:var(--crashed)"></span> ✕ crashed run <span style="color:var(--faint)">(click for actions)</span></div>
-        <div class="row"><span class="sw" style="background:var(--target);opacity:.4"></span> done</div>
-        <div class="row"><span class="ln" style="border-color:var(--delivered)"></span> message</div>
-        <div class="row"><span class="ln" style="border-color:var(--watch);border-top-style:dashed"></span> watch</div>
-        <div class="row"><span class="ln" style="border-color:var(--watch);border-top-style:dotted"></span> broadcast</div>
-        <div class="row" style="margin-top:3px;color:var(--faint)">liveness is real (pid / session), not tasks.status</div>
-      </div>
-      <div class="hint">drag nodes · hover to focus · scroll to zoom</div>
-      <div class="tip" id="tip"></div>
-    </div>
-
-    <div class="feed">
-      <div class="panel-tabs">
-        <button class="tab active" data-tab="feed"><span class="live-dot"></span> Feed <span class="c" id="feedcount">0</span></button>
-        <button class="tab" data-tab="inbox">Inbox <span class="badge calm" id="inboxbadge" hidden>0</span></button>
-      </div>
-      <div class="panel-body">
-        <div class="feed-list" id="feed"></div>
-        <div class="inbox" id="inbox" hidden></div>
-      </div>
-    </div>
-  </div>
+  <div class="view" id="graphview" hidden></div>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
 <script>
-(function(){
-  "use strict";
-  const POLL_MS = 2000;
-  const svg = d3.select("#graph");
-  const stageEl = document.querySelector(".stage");
-  const tipEl = document.getElementById("tip");
-  let W = stageEl.clientWidth, H = stageEl.clientHeight;
+(() => {
+  const POLL_MS = 5000;
+  const $ = (s, el=document) => el.querySelector(s);
+  const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 
-  // layers
-  const root = svg.append("g");
-  const gWatch   = root.append("g");
-  const gBcast   = root.append("g");   // broadcast fan-out edges (under messages)
-  const gMsg     = root.append("g");
-  const gPackets = root.append("g");
-  const gNodes   = root.append("g");
-  const BCAST_WINDOW = 1800; // seconds: only show broadcasts from the last 30 min
+  // ---------- state (selection lives in the URL hash) ----------
+  const st = { channels: [], live: [], cards: [], channel: null, thread: null, filter: "all", showEarlier: false, briefOpen: false, lastOk: 0, seen: {} };
+  try { st.seen = JSON.parse(localStorage.getItem("flowhub-seen") || "{}"); } catch(e) {}
+  function readHash(){ const p = new URLSearchParams(location.hash.slice(1)); return { c: p.get("c"), t: p.get("t"), v: p.get("v") }; }
+  function writeHash(h){ const p = new URLSearchParams(); if (h.v && h.v!=="channels") p.set("v", h.v); if (h.c) p.set("c", h.c); if (h.t) p.set("t", h.t); history.replaceState(null, "", "#" + p.toString()); }
+  let sel = readHash();
 
-  // glow filter
-  const defs = svg.append("defs");
-  const f = defs.append("filter").attr("id","glow").attr("x","-60%").attr("y","-60%").attr("width","220%").attr("height","220%");
-  f.append("feGaussianBlur").attr("stdDeviation","3.2").attr("result","b");
-  const fm = f.append("feMerge"); fm.append("feMergeNode").attr("in","b"); fm.append("feMergeNode").attr("in","SourceGraphic");
-
-  // zoom / pan
-  const zoom = d3.zoom().scaleExtent([0.4,2.6]).on("zoom",e=>root.attr("transform",e.transform));
-  svg.call(zoom);
-
-  // ---- state ----
-  const nodeById = new Map();
-  let nodes = [], links = [], msgEdges = [], bcastEdges = [];
-  let nodeSel, msgSel, watchSel, packetSel, bcastSel, bcastPkSel;
-  const bcastPhase = new Map();
-  const seen = new Set();
-  let firstLoad = true, lastOk = 0, connErr = null;
-  const t0 = performance.now();
-
-  // ---- forces ----
-  const sim = d3.forceSimulation(nodes)
-    .force("link", d3.forceLink(links).id(d=>d.id).distance(l=>l.type==="watch"?120:150).strength(0.35))
-    .force("charge", d3.forceManyBody().strength(-560))
-    .force("collide", d3.forceCollide(d=>rOf(d)+30))
-    .force("x", d3.forceX(()=>W/2).strength(0.06))
-    .force("y", d3.forceY(()=>H/2).strength(0.06))
-    .force("center", d3.forceCenter(W/2,H/2))
-    .velocityDecay(0.32)
-    .alpha(1);
-  sim.on("tick", ()=>{}); // rendering handled by RAF
-
-  function rOf(n){ return n.kind==="human"?26 : n.kind==="session"?18 : 14; }
-  function isDead(n){ return n.kind==="session" && n.status==="done"; } // finished agent, session won't pop
-  const STALE_DAYS = 3;
-  function ageDays(iso){ return iso ? (Date.now()-new Date(iso).getTime())/86400000 : Infinity; }
-  // a session that finished more than STALE_DAYS ago — clutter, hidden by default
-  function staleDead(n){ return isDead(n) && ageDays(n.dead_at) > STALE_DAYS; }
-  let showAll = (()=>{ try{ return localStorage.getItem("flowhub-showall")==="1"; }catch(e){ return false; } })();
-  let lastHub = null;
-  // runOf is the real liveness the backend computed (live|idle|crashed|done|
-  // backlog), not the stale tasks.status. Falls back to status if absent.
-  function runOf(n){
-    if(n.run_state) return n.run_state;
-    if(n.kind!=="session") return "";
-    return n.status==="done"?"done":n.status==="backlog"?"backlog":"idle";
+  // ---------- time ----------
+  function ago(iso){
+    if (!iso) return "";
+    const s = (Date.now() - new Date(iso)) / 1000;
+    if (s < 60) return "just now";
+    if (s < 3600) return Math.floor(s/60) + "m ago";
+    if (s < 86400) return Math.floor(s/3600) + "h ago";
+    return Math.floor(s/86400) + "d ago";
   }
-  function isCrashed(n){ return runOf(n)==="crashed"; }
-  function colVar(n){
-    if(n.kind==="human") return "--hub";
-    const r=runOf(n);
-    if(r==="crashed") return "--crashed";
-    if(r==="done"||r==="backlog"||n.kind!=="session") return "--target";
-    return "--session"; // live or idle
+  function dur(fromIso, toIso){
+    if (!fromIso) return "";
+    const s = ((toIso ? new Date(toIso) : Date.now()) - new Date(fromIso)) / 1000;
+    if (s < 3600) return Math.max(1, Math.round(s/60)) + "m";
+    if (s < 86400) return Math.floor(s/3600) + "h " + Math.round((s%3600)/60) + "m";
+    return Math.floor(s/86400) + "d";
   }
-  // opacity conveys liveness: live=full, idle=detached/dim, crashed=mid, done=faint
-  function coreOpacity(n){
-    if(n.kind==="human") return .95;
-    switch(runOf(n)){
-      case "live": return .92;
-      case "idle": return .42;
-      case "crashed": return .62;
-      case "done": return .3;
-      default: return n.kind==="target"?.55:.7; // backlog / bare target
+  const hhmm = iso => { const d = new Date(iso); return String(d.getHours()).padStart(2,"0") + ":" + String(d.getMinutes()).padStart(2,"0"); };
+  const isToday = iso => iso && new Date(iso).toDateString() === new Date().toDateString();
+  function dayLabel(iso){
+    const d = new Date(iso), t = new Date(); const y = new Date(); y.setDate(t.getDate()-1);
+    if (d.toDateString() === t.toDateString()) return "Today";
+    if (d.toDateString() === y.toDateString()) return "Yesterday";
+    return d.toLocaleDateString(undefined, { weekday:"short", day:"numeric", month:"short" });
+  }
+
+  // ---------- tiny markdown (escaped first, so safe) ----------
+  function md(src){
+    const lines = esc(src || "").split("\n"); let out = [], inList = false, inPre = false, pre = [], para = [];
+    const flush = () => { if (para.length) { out.push("<p>" + inline(para.join(" ")) + "</p>"); para = []; } };
+    var inline = s => s.replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>").replace(/\[\[([^\]]+)\]\]/g, "<code>$1</code>");
+    for (const ln of lines){
+      if (ln.trim().startsWith("```")) { flush(); if (inPre) { out.push("<pre>" + pre.join("\n") + "</pre>"); pre = []; } inPre = !inPre; continue; }
+      if (inPre) { pre.push(ln); continue; }
+      const h = ln.match(/^(#{1,4})\s+(.*)/), li = ln.match(/^\s*[-*]\s+(.*)/);
+      if (li || h || !ln.trim()) flush();
+      if (li) { if (!inList) { out.push("<ul>"); inList = true; } out.push("<li>" + inline(li[1]) + "</li>"); continue; }
+      if (inList) { out.push("</ul>"); inList = false; }
+      if (h) out.push("<h" + (h[1].length+1) + ">" + inline(h[2]) + "</h" + (h[1].length+1) + ">");
+      else if (ln.trim()) para.push(ln.trim());
     }
-  }
-  function statusClass(s){ return s==="acked"?"acked":(s==="pending"?"pending":"delivered"); }
-  function trunc(s,n){ return s && s.length>n ? s.slice(0,n-1)+"…" : (s||""); }
-
-  // ---------- data pump ----------
-  function pull(){
-    fetch("/api/hub",{cache:"no-store"}).then(r=>r.json()).then(hub=>{
-      if(hub.error) throw new Error(hub.error);
-      connErr=null; lastOk=Date.now();
-      apply(hub);
-    }).catch(e=>{ connErr=String(e.message||e); paintStatus(null); });
+    flush();
+    if (inList) out.push("</ul>"); if (inPre) out.push("<pre>" + pre.join("\n") + "</pre>");
+    return out.join("");
   }
 
-  function apply(hub){
-    lastHub = hub;
-    // nodes: reuse existing objects to preserve positions. Sessions dead >3d
-    // are hidden by default (not added to nodeById → their edges drop too).
-    let hidden = 0;
-    const present = new Set();
-    hub.nodes.forEach(n=>{
-      if(!showAll && staleDead(n)){ hidden++; return; }
-      present.add(n.id);
-      let o = nodeById.get(n.id);
-      if(!o){
-        o = Object.assign({}, n, {x:W/2+(Math.random()-.5)*160, y:H/2+(Math.random()-.5)*160});
-        nodeById.set(n.id,o);
-      } else { Object.assign(o,{kind:n.kind,label:n.label,name:n.name,status:n.status,nudge:n.nudge,dead_at:n.dead_at,run_state:n.run_state,launch:n.launch}); }
-    });
-    for(const id of Array.from(nodeById.keys())) if(!present.has(id)) nodeById.delete(id);
-    nodes = Array.from(nodeById.values());
-    paintStaleToggle(hidden);
-
-    // links for physics = watches + messages (dedup pairs by type+dir)
-    const seenL = new Set(); links = [];
-    const push=(a,b,type)=>{ const k=type+":"+a+"->"+b; if(seenL.has(k))return; if(!nodeById.has(a)||!nodeById.has(b))return; seenL.add(k); links.push({source:a,target:b,type}); };
-    hub.watches.forEach(w=>push(w.from,w.to,"watch"));
-    hub.messages.forEach(m=>push(m.from,m.to,"msg"));
-
-    // message edges for wires + packets (keep transient phase across updates)
-    const prevPhase = new Map(msgEdges.map(e=>[e.id,e.phase]));
-    msgEdges = hub.messages.filter(m=>nodeById.has(m.from)&&nodeById.has(m.to)).map(m=>({
-      id:m.id, from:m.from, to:m.to, body:m.body, status:m.status, urgent:m.urgent,
-      waited_s:m.waited_s, at:m.at, phase: prevPhase.has(m.id)?prevPhase.get(m.id):Math.random()
-    }));
-
-    // broadcast fan-out edges: sender -> each watcher, one per recent target.
-    // Broadcasts travel along (the reverse of) watch relations; we render
-    // recent ones as fading indigo wires with an outward packet.
-    const nowMs = Date.now();
-    const prevBc = new Map(bcastEdges.map(e=>[e.id,e.phase]));
-    bcastEdges = [];
-    (hub.broadcasts||[]).forEach((b,bi)=>{
-      const ageS=(nowMs-new Date(b.at).getTime())/1000;
-      if(ageS<0 || ageS>BCAST_WINDOW) return;
-      (b.targets||[]).forEach((t,ti)=>{
-        if(!nodeById.has(b.from)||!nodeById.has(t)||b.from===t) return;
-        const id="bc:"+bi+":"+ti;
-        bcastEdges.push({id, from:b.from, to:t, body:b.body, at:b.at, ageS, phase: prevBc.has(id)?prevBc.get(id):Math.random()});
-      });
-    });
-
-    // detect NEW messages (skip on first load)
-    const fresh=[];
-    hub.messages.forEach(m=>{ if(!seen.has(m.id)){ if(!firstLoad) fresh.push(m); seen.add(m.id); }});
-    fresh.forEach(m=>{
-      const e = msgEdges.find(x=>x.id===m.id); if(e) e.burstUntil = perfNow()+2.2;
-      flashNode(m.from); flashNode(m.to);
-    });
-
-    joinGraph();
-    renderFeed(hub, fresh);
-    paintStatus(hub);
-
-    sim.nodes(nodes);
-    sim.force("link").links(links);
-    sim.alpha(firstLoad?1:0.55).restart();
-    firstLoad=false;
+  // ---------- status vocabulary ----------
+  function stateOf(c){
+    if (c.status === "done") return { dot:"done", pill:"done", label: c.auto ? "done · auto " + dur(c.auto_started, c.auto_finished) : "done" };
+    if (c.status === "backlog") return { dot:"backlog", pill:"backlog", label:"backlog" };
+    if (c.run_state === "live") return { dot:"live", pill:"live", label: c.auto ? "auto running " + dur(c.auto_started) : "session live" };
+    if (c.run_state === "crashed") return { dot:"crashed", pill:"crashed", label:"auto died" };
+    if (c.waiting_on) return { dot:"att", pill:"att", label:"waiting" };
+    if (c.section === "attention") return { dot:"att", pill:"att", label: c.reason || "stale" };
+    return { dot:"idle", pill:"idle", label:"idle" };
   }
 
-  function flashNode(id){ const o=nodeById.get(id); if(o) o.flashUntil=perfNow()+1.3; }
-  function perfNow(){ return (performance.now()-t0)/1000; }
+  // ---------- fetch ----------
+  async function getJSON(url){ const r = await fetch(url, { cache:"no-store" }); if (!r.ok) throw new Error(r.status); return r.json(); }
+  function setConn(ok){ const b = $("#beacon"); b.className = "beacon " + (ok ? "ok" : "bad"); $("#conn").textContent = ok ? "live · read-only" : "disconnected"; }
 
-  // ---------- SVG joins ----------
-  function joinGraph(){
-    watchSel = gWatch.selectAll("path.watch").data(links.filter(l=>l.type==="watch"), l=>l.source.id||l.source ? (l.source.id||l.source)+"~"+(l.target.id||l.target) : Math.random())
-      .join(en=>en.append("path").attr("class","watch").attr("fill","none").attr("stroke-width",1.4).attr("stroke-dasharray","5 5"))
-      .attr("stroke",l=>linkDead(l)?"var(--wire)":"var(--watch)").attr("opacity",l=>linkDead(l)?0.14:0.5);
+  async function refresh(){
+    try {
+      const list = await getJSON("/api/channels");
+      st.channels = list.channels || []; st.live = (list.live || []).sort((a, b) => (b.auto - a.auto));
+      if (!sel.c && st.channels.length) { sel.c = st.channels[0].slug; }
+      renderSide();
+      if (sel.c) await loadChannel(sel.c, false);
+      if (sel.t) await loadThread(sel.t, false); else $("#thread").hidden = true;
+      st.lastOk = Date.now(); setConn(true);
+    } catch (e) { setConn(false); }
+  }
+  async function loadChannel(slug, fromClick){
+    try {
+      const d = await getJSON("/api/channel/" + encodeURIComponent(slug));
+      st.channel = d.channel; st.cards = d.cards || [];
+    } catch (e) { st.channel = { slug, name: slug }; st.cards = []; }
+    st.seen[slug] = new Date().toISOString(); try { localStorage.setItem("flowhub-seen", JSON.stringify(st.seen)); } catch(e) {}
+    if (fromClick) { st.filter = "all"; st.showEarlier = false; $("#mid").scrollTop = 0; }
+    renderMid();
+  }
+  async function loadThread(slug, fromClick){
+    try { st.thread = await getJSON("/api/thread/" + encodeURIComponent(slug)); }
+    catch (e) { st.thread = null; sel.t = null; writeHash(sel); $("#thread").hidden = true; return; }
+    if (fromClick) { st.briefOpen = false; $("#thread").scrollTop = 0; }
+    renderThread();
+  }
 
-    bcastSel = gBcast.selectAll("path.bc").data(bcastEdges, d=>d.id)
-      .join(en=>en.append("path").attr("class","bc").attr("fill","none")
-        .attr("stroke","var(--wire)").attr("stroke-width",1.6).attr("stroke-dasharray","1 6").attr("stroke-linecap","round"));
-    bcastSel.append("title").text(d=>`broadcast: ${d.from} → ${d.to}\n${d.body}`);
-    bcastPkSel = gBcast.selectAll("g.bpk").data(bcastEdges, d=>d.id)
-      .join(en=>{ const g=en.append("g").attr("class","bpk");
-        g.append("circle").attr("r",3).attr("fill","var(--watch)").attr("filter","url(#glow)"); return g; });
+  // ---------- render: sidebar ----------
+  function renderSide(){
+    const q = $("#find").value.trim().toLowerCase();
+    $("#livecount").textContent = st.live.length;
+    $("#live").innerHTML = st.live.length ? st.live.map(l => `
+      <div class="row ${sel.t===l.slug?"on":""}" data-live="${esc(l.slug)}" data-ch="${esc(l.channel)}" title="${esc(l.name)}">
+        <span class="dot live"></span><span class="nm mono" style="font-size:12.5px">${esc(l.slug)}</span>
+        <span class="meta" title="${l.auto ? "auto run time" : "last activity"}">${l.auto ? "⚙ " + dur(l.since) : ago(l.since).replace(" ago","")}</span>
+      </div>`).join("") : `<div class="empty-s">nothing running</div>`;
+    const chans = st.channels.filter(c => !q || c.name.toLowerCase().includes(q) || c.slug.includes(q));
+    $("#chcount").textContent = st.channels.length;
+    $("#channels").innerHTML = chans.map(c => {
+      const unread = sel.c !== c.slug && c.last_activity && (!st.seen[c.slug] || c.last_activity > st.seen[c.slug]);
+      return `<div class="row ${sel.c===c.slug?"on":""} ${unread?"unread":""}" data-ch="${esc(c.slug)}" title="${c.total} tasks · ${c.open} open · active ${ago(c.last_activity)}">
+        <span class="hash">${c.slug==="_floating"?"~":"#"}</span><span class="nm">${esc(c.name)}</span>
+        ${c.live ? `<span class="badge live">${c.live}</span>` : ""}
+        ${c.attention ? `<span class="badge att">${c.attention}</span>` : ""}
+      </div>`;
+    }).join("") || `<div class="empty-s">no match</div>`;
+  }
 
-    msgSel = gMsg.selectAll("path.msg").data(msgEdges, d=>d.id)
-      .join(en=>en.append("path").attr("class","msg").attr("fill","none").attr("stroke-linecap","round"))
-      .attr("stroke",d=>msgStroke(d)).attr("stroke-width",d=>d.status==="acked"?1.6:2.2)
-      .attr("opacity",d=>msgOpacity(d));
-
-    packetSel = gPackets.selectAll("g.pk").data(msgEdges, d=>d.id)
-      .join(en=>{ const g=en.append("g").attr("class","pk");
-        g.append("circle").attr("class","halo").attr("r",7).attr("fill","none");
-        g.append("circle").attr("class","core").attr("r",3.4).attr("filter","url(#glow)");
-        return g; });
-    packetSel.select(".core").attr("fill",d=>wireColor(d));
-    packetSel.select(".halo").attr("stroke",d=>wireColor(d)).attr("stroke-width",1);
-
-    nodeSel = gNodes.selectAll("g.node").data(nodes, d=>d.id)
-      .join(
-        en=>{
-          const g=en.append("g").attr("class","node").style("cursor","pointer");
-          g.append("circle").attr("class","ring").attr("fill","none").attr("stroke-width",2);
-          g.append("circle").attr("class","core").attr("filter","url(#glow)");
-          g.append("circle").attr("class","flash").attr("fill","none").attr("stroke-width",2).attr("opacity",0);
-          g.append("text").attr("class","g-label").attr("text-anchor","middle");
-          g.append("g").attr("class","badge").style("display","none")
-            .call(b=>{ b.append("circle").attr("r",8).attr("fill","var(--nudge)"); b.append("text").attr("class","g-sub").attr("text-anchor","middle").attr("dy",3).attr("fill","#fff").style("font-weight","700"); });
-          g.append("g").attr("class","crash").style("display","none")
-            .call(b=>{ b.append("circle").attr("r",7).attr("fill","var(--crashed)"); b.append("text").attr("text-anchor","middle").attr("dy",3.2).attr("fill","#fff").style("font","700 10px 'IBM Plex Mono',monospace").text("✕"); });
-          g.on("mouseenter",(ev,d)=>focusNode(d,ev)).on("mousemove",(ev)=>moveTip(ev)).on("mouseleave",()=>unfocus());
-          g.on("click",(ev,d)=>{ ev.stopPropagation(); onNodeClick(d,ev); });
-          g.on("contextmenu",(ev,d)=>{ ev.preventDefault(); ev.stopPropagation(); openNodeMenu(d,ev); });
-          g.call(d3.drag()
-            .on("start",(ev,d)=>{ if(!ev.active) sim.alphaTarget(.25).restart(); d.fx=d.x; d.fy=d.y; })
-            .on("drag",(ev,d)=>{ d.fx=ev.x; d.fy=ev.y; })
-            .on("end",(ev,d)=>{ if(!ev.active) sim.alphaTarget(0); d.fx=null; d.fy=null; }));
-          return g;
+  // ---------- render: channel ----------
+  const FILTERS = [["all","All"],["active","Active"],["attention","Needs attention"],["backlog","Backlog"],["done","Done"]];
+  function cardHTML(c){
+    const s = stateOf(c);
+    const foot = [
+      c.messages ? `💬 ${c.messages}` : "",
+      c.last_activity ? ago(c.last_activity) : "",
+      c.priority === "high" ? `<span class="pri-high">high</span>` : c.priority ? c.priority : "",
+      c.waiting_on ? `waiting on: ${esc(c.waiting_on)}` : "",
+    ].filter(Boolean).join(" · ");
+    return `<div class="card ${sel.t===c.slug?"on":""}" data-t="${esc(c.slug)}">
+      <span class="dot ${s.dot}"></span>
+      <span class="slug">${esc(c.slug)}</span>
+      <span class="pill ${s.pill}">${esc(s.label)}</span>
+      ${c.name && c.name !== c.slug ? `<span class="name">${esc(c.name)}</span>` : ""}
+      ${c.latest ? `<span class="latest">${esc(c.latest)}</span>` : ""}
+      <span class="foot">${foot || "no activity yet"}</span>
+    </div>`;
+  }
+  function renderMid(){
+    const ch = st.channel; if (!ch) return;
+    const by = k => st.cards.filter(c => c.section === k);
+    const counts = { all: st.cards.length, active: by("active").length, attention: by("attention").length, backlog: by("backlog").length, done: by("done").length };
+    let body = "";
+    const group = (title, cards) => cards.length ? `<div class="grp-h">${title}</div>` + cards.map(cardHTML).join("") : "";
+    const f = st.filter;
+    if (f === "all" || f === "active") body += group("Active", by("active"));
+    if (f === "all" || f === "attention") body += group("Needs attention", by("attention"));
+    if (f === "all" || f === "backlog") body += group("Backlog", by("backlog"));
+    if (f === "all" || f === "done") {
+      const done = by("done"), today = done.filter(c => isToday(c.last_activity)), earlier = done.filter(c => !isToday(c.last_activity));
+      if (f === "done") body += group("Done", done);
+      else {
+        body += group("Done today", today);
+        if (earlier.length) {
+          body += `<div class="grp-h">Done earlier</div>`;
+          body += st.showEarlier ? earlier.map(cardHTML).join("")
+            : `<div class="fold">${earlier.slice(0, 8).map(c => `<a data-t="${esc(c.slug)}">✓ ${esc(c.slug)}</a>`).join("")}<a class="more" data-more="1">${earlier.length > 8 ? "+" + (earlier.length - 8) + " more · " : ""}show all</a></div>`;
         }
-      );
-    // (re)style nodes on every update
-    nodeSel.each(function(d){
-      const g=d3.select(this), c=`var(${colVar(d)})`, dead=isDead(d), crashed=isCrashed(d);
-      // dashed ring for anything not currently running (done or crashed);
-      // crashed keeps a brighter ring so a failed run reads louder than a
-      // quietly-finished one.
-      const dashed = dead || crashed;
-      g.select(".ring").attr("r",rOf(d)+4).attr("stroke",c)
-        .attr("opacity",crashed?.75:(dead?.5:.35)).attr("stroke-dasharray",dashed?"3 3":null);
-      g.select(".core").attr("r",rOf(d)).attr("fill",c).attr("opacity",coreOpacity(d));
-      g.select(".flash").attr("r",rOf(d)+4).attr("stroke",c);
-      g.select(".g-label").attr("y",rOf(d)+15).text(trunc(d.label,22)).attr("opacity",dead?.5:1);
-      // crash marker: a small ✗ so a dead --auto run is unmistakable, and the
-      // node advertises it can be restarted with a click.
-      const cm=g.select(".crash");
-      if(crashed){ cm.style("display",null).attr("transform",`translate(${-rOf(d)+1},${-rOf(d)+1})`); }
-      else cm.style("display","none");
-      const badge=g.select(".badge");
-      if(d.nudge>0){ badge.style("display",null).attr("transform",`translate(${rOf(d)-2},${-rOf(d)+2})`); badge.select("text").text(d.nudge); }
-      else badge.style("display","none");
-      g.style("cursor", (d.id==="user"||d.kind==="session")?"pointer":"default");
-    });
-  }
-
-  // A LIVE message edge carries its status color so real traffic reads as
-  // alive; a DEAD (done-session) edge and the structural watch/broadcast
-  // links are grey. Kind is still read from dash style, liveness from motion.
-  // All message edges are one blue regardless of status; red only for urgent;
-  // grey only for dead. (Message state lives in the feed/inbox, not edge color.)
-  function statusColor(d){ return d.urgent ? "var(--urgent)" : "var(--delivered)"; }
-  function wireColor(d){ return edgeDead(d.from,d.to) ? "var(--wire)" : statusColor(d); }
-  function deadNode(id){ const n=nodeById.get(id); return !!(n && isDead(n)); }
-  function edgeDead(a,b){ return deadNode(a)||deadNode(b); }
-  function linkDead(l){ return edgeDead(l.source.id||l.source, l.target.id||l.target); }
-  function msgStroke(d){ return wireColor(d); }
-  function msgOpacity(d){ return edgeDead(d.from,d.to) ? 0.22 : (d.urgent ? 0.9 : 0.7); }
-  // a message packet flows only while it's LIVE: still unanswered (pending) or recent.
-  const LIVE_WINDOW = 120; // seconds
-  function msgLive(d){ if(edgeDead(d.from,d.to)) return false; if(d.status==="pending") return true;
-    return (Date.now()-new Date(d.at).getTime())/1000 < LIVE_WINDOW; }
-
-  // ---------- focus / tooltip ----------
-  let focused=null;
-  function neighbors(id){ const s=new Set([id]); msgEdges.concat(links).forEach(l=>{const a=l.from||(l.source.id||l.source),b=l.to||(l.target.id||l.target); if(a===id)s.add(b); if(b===id)s.add(a);}); return s; }
-  function focusNode(d,ev){
-    focused=d.id; const nb=neighbors(d.id);
-    nodeSel.attr("opacity",n=>nb.has(n.id)?1:.15);
-    msgSel.attr("opacity",e=>(e.from===d.id||e.to===d.id)?(e.status==="acked"?.7:.95):.06);
-    watchSel.attr("opacity",l=>{const a=l.source.id||l.source,b=l.target.id||l.target;return (a===d.id||b===d.id)?.7:.06;});
-    const desc = d.kind==="human" ? "The human. Directed messages escalate here until you reply."
-      : (d.name || "referenced on the bus");
-    const r=runOf(d);
-    const rLabel={live:"● live",idle:"◌ idle (detached)",crashed:"✕ crashed run",done:"done",backlog:"backlog"}[r]||"";
-    const hint = d.kind==="session" ? `<div class="t-meta" style="color:var(--faint)">click / right-click for actions</div>` : "";
-    tipEl.innerHTML = `<div class="t-name">${d.id}</div><div class="t-desc">${desc}</div>`+
-      (rLabel?`<div class="t-meta">${rLabel}${d.nudge>0?` · ${d.nudge} nudge`:""}</div>`:"")+hint;
-    tipEl.classList.add("on"); moveTip(ev);
-  }
-  function moveTip(ev){ const r=stageEl.getBoundingClientRect(); let x=ev.clientX-r.left+14, y=ev.clientY-r.top+14;
-    x=Math.min(x, r.width-tipEl.offsetWidth-10); tipEl.style.left=x+"px"; tipEl.style.top=y+"px"; }
-  function unfocus(){ focused=null; nodeSel.attr("opacity",1);
-    msgSel.attr("opacity",d=>msgOpacity(d));
-    watchSel.attr("opacity",l=>linkDead(l)?0.14:0.35); tipEl.classList.remove("on"); }
-
-  // ---------- geometry ----------
-  function edgeGeom(d){
-    const s=nodeById.get(d.from||d.source), t=nodeById.get(d.to||d.target);
-    if(!s||!t) return null;
-    const sign = (d.from||"") < (d.to||"") ? 1 : -1;
-    const dx=t.x-s.x, dy=t.y-s.y, len=Math.hypot(dx,dy)||1;
-    const nx=-dy/len, ny=dx/len;
-    const amp = Math.min(48, len*0.16) * sign;
-    const mx=(s.x+t.x)/2 + nx*amp, my=(s.y+t.y)/2 + ny*amp; // control point
-    // trim endpoints to node edges
-    const rs=rOf(s)+3, rt=rOf(t)+7;
-    const a=trimToward(s.x,s.y,mx,my,rs), b=trimToward(t.x,t.y,mx,my,rt);
-    return {sx:a.x,sy:a.y,tx:b.x,ty:b.y,cx:mx,cy:my};
-  }
-  function trimToward(px,py,cx,cy,r){ const dx=cx-px,dy=cy-py,l=Math.hypot(dx,dy)||1; return {x:px+dx/l*r, y:py+dy/l*r}; }
-  function pathD(g){ return `M${g.sx},${g.sy} Q${g.cx},${g.cy} ${g.tx},${g.ty}`; }
-  function bez(g,t){ const u=1-t; return { x:u*u*g.sx+2*u*t*g.cx+t*t*g.tx, y:u*u*g.sy+2*u*t*g.cy+t*t*g.ty }; }
-
-  // ---------- render loop ----------
-  function frame(){
-    const now=perfNow();
-    if(nodeSel) nodeSel.attr("transform",d=>`translate(${d.x},${d.y})`)
-      .each(function(d){ const fl=g=>{}; const g=d3.select(this).select(".flash");
-        if(d.flashUntil&&now<d.flashUntil){ const k=(d.flashUntil-now)/1.3; g.attr("opacity",k).attr("r",rOf(d)+4+(1-k)*14);} else g.attr("opacity",0); });
-
-    if(watchSel) watchSel.each(function(l){ const g=edgeGeom({from:l.source.id||l.source,to:l.target.id||l.target}); if(g) d3.select(this).attr("d",pathD(g)); });
-    if(watchSel){ const off=(now*7)%10; watchSel.attr("stroke-dashoffset",-off); }
-
-    // broadcast wires + outward packets, fading with age (grey + no packet if it touches a dead node)
-    if(bcastSel) bcastSel.each(function(d){ const g=edgeGeom(d); if(!g) return;
-      const dead=edgeDead(d.from,d.to), fade=Math.max(0,1-(d.ageS||0)/BCAST_WINDOW);
-      d3.select(this).attr("d",pathD(g)).attr("stroke",dead?"var(--wire)":"var(--watch)").attr("opacity",dead?0.12:(0.2+0.4*fade)); });
-    if(bcastPkSel) bcastPkSel.each(function(d){ const g=edgeGeom(d); if(!g||edgeDead(d.from,d.to)){ d3.select(this).attr("display","none"); return; }
-      d3.select(this).attr("display",null);
-      const fade=Math.max(0,1-(d.ageS||0)/BCAST_WINDOW);
-      const t=(d.phase + now*0.5)%1; const p=bez(g,t);
-      d3.select(this).attr("transform",`translate(${p.x},${p.y})`).select("circle").attr("opacity",0.35+0.6*fade); });
-
-    if(msgSel) msgSel.each(function(d){ const g=edgeGeom(d); if(g) d3.select(this).attr("d",pathD(g)); });
-
-    if(packetSel) packetSel.each(function(d){
-      const g=edgeGeom(d);
-      // motion = liveness: a packet flows only while the message is live (unanswered or recent)
-      if(!g || !msgLive(d)){ d3.select(this).attr("display","none"); return; }
-      d3.select(this).attr("display",null);
-      const speed = d.urgent?0.55 : (d.status==="pending"?0.42:0.3);
-      let t=(d.phase + now*speed)%1;
-      const p=bez(g,t);
-      const burst = d.burstUntil && now<d.burstUntil;
-      const sel=d3.select(this);
-      sel.attr("transform",`translate(${p.x},${p.y})`);
-      sel.select(".core").attr("r", burst?5.4:3.4).attr("opacity", 1);
-      sel.select(".halo").attr("opacity", burst? (0.9*((d.burstUntil-now)/2.2)+0.2) : 0.3).attr("r", burst?11:7);
-    });
-    requestAnimationFrame(frame);
-  }
-  requestAnimationFrame(frame);
-
-  // ---------- top bar + feed ----------
-  function paintStatus(hub){
-    const beacon=document.getElementById("beacon"), conn=document.getElementById("conn");
-    const stale = lastOk && (Date.now()-lastOk)>POLL_MS*3;
-    beacon.classList.toggle("stale", !!(connErr||stale));
-    conn.textContent = connErr ? "reconnecting…" : (hub? "updated "+ago(hub.generated_at) : "connecting…");
-    if(!hub) return;
-    const s=hub.stats;
-    const chips=[["participants",s.participants],["messages",s.messages],["acked",s.acked,"--acked"],["delivered",s.delivered,s.delivered?"--delivered":null],["pending",s.pending,s.pending?"--wait":null],["nudges",s.nudges,s.nudges?"--nudge":null]];
-    document.getElementById("chips").innerHTML = chips.map(([l,n,c])=>
-      `<div class="chip"><span class="n"${c?` style="color:var(${c})"`:""}>${n}</span><span class="l">${l}</span></div>`).join("");
-  }
-
-  const feedEl=document.getElementById("feed");
-  const rendered=new Set();
-  function renderFeed(hub, fresh){
-    document.getElementById("feedcount").textContent = hub.messages.length;
-    if(!hub.messages.length){ if(!feedEl.children.length) feedEl.innerHTML='<div class="feed-empty">bus is quiet —<br>no messages yet</div>'; return; }
-    const empty=feedEl.querySelector(".feed-empty"); if(empty) empty.remove();
-    // iterate oldest→newest and insert each new card at the TOP, so the
-    // feed ends up strict reverse-chronology (newest on top) for both the
-    // first-load batch and every later single arrival.
-    hub.messages.forEach(m=>{
-      if(rendered.has(m.id)) { const ex=feedEl.querySelector(`[data-id="${m.id}"]`); if(ex){ const w=ex.querySelector(".c-wait"); if(w) w.textContent=waitText(m);} return; }
-      rendered.add(m.id);
-      const isNew = fresh.some(f=>f.id===m.id);
-      const toYou=m.to==="user", fromYou=m.from==="user"; // human hub canonicalized to "user"
-      const sc=m.urgent?"urgent":statusClass(m.status);
-      const el=document.createElement("div");
-      el.className="card "+sc+(isNew?" new flash":"");
-      el.dataset.id=m.id;
-      el.innerHTML=
-        `<div class="c-route"><span class="c-node ${fromYou?"you":""}">${fromYou?"you":m.from}</span><span class="c-arrow">→</span>`+
-        `<span class="c-node ${toYou?"you":""}">${toYou?"you":m.to}</span><span class="c-time mono">${ago(m.at)}</span></div>`+
-        `<div class="c-body">${esc(m.body)}</div>`+
-        `<div class="c-foot"><span class="pill ${sc}">${m.urgent?"urgent":m.status}</span><span class="c-wait">${waitText(m)}</span></div>`;
-      // insert in correct chronological slot (newest at top)
-      feedEl.insertBefore(el, feedEl.firstChild);
-    });
-    // trim
-    while(feedEl.children.length>60) feedEl.removeChild(feedEl.lastChild);
-  }
-  function waitText(m){
-    if(m.status==="acked") return m.waited_s ? fmtWait(m.waited_s)+" → answered" : "answered";
-    if(m.status==="delivered") return "delivered to session";
-    return "pending — awaiting you"; // human-directed, not yet answered
-  }
-  function fmtWait(s){ if(!s||s<=0)return""; const mm=Math.floor(s/60),ss=Math.round(s%60); return mm>0?`${mm}m ${ss}s`:`${ss}s`; }
-  function ago(iso){ if(!iso)return""; const d=(Date.now()-new Date(iso).getTime())/1000; if(d<60)return `${Math.max(0,Math.round(d))}s ago`; if(d<3600)return `${Math.round(d/60)}m ago`; return `${Math.round(d/3600)}h ago`; }
-  function esc(s){ return (s||"").replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); }
-
-  // ---------- inbox (DM threads, pop-on-seen) ----------
-  let inboxData=null, activeTab="feed", openThreadTask=null, lastSig="", composeAgents=[];
-  const COMPOSE="__compose__";
-  // WhatsApp-style ticks for YOUR outbound messages, driven by bus status:
-  //   pending = sent (agent hasn't popped it)   → ✓
-  //   delivered = agent's session popped it      → ✓✓
-  //   acked = (rare for peer) treated as read    → ✓✓ green
-  function tick(status){
-    if(status==="acked")    return '<span class="tick read" title="read">✓✓</span>';
-    if(status==="delivered")return '<span class="tick delivered" title="delivered to session">✓✓</span>';
-    return '<span class="tick sent" title="sent, awaiting delivery">✓</span>';
-  }
-  const inboxEl=document.getElementById("inbox");
-  const feedListEl=document.getElementById("feed");
-  const inboxBadge=document.getElementById("inboxbadge");
-
-  document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>switchTab(b.dataset.tab));
-  function switchTab(name){
-    activeTab=name;
-    document.querySelectorAll(".tab").forEach(b=>b.classList.toggle("active",b.dataset.tab===name));
-    feedListEl.hidden = name!=="feed";
-    inboxEl.hidden = name!=="inbox";
-    if(name==="inbox"){ lastSig=""; renderInbox(); }
-  }
-  // Left-click = quick primary action; right-click = full context menu.
-  function onNodeClick(d,ev){
-    closeNodeMenu();
-    if(d.id==="user"){ switchTab("inbox"); return; }
-    const th=inboxData && inboxData.threads.find(t=>t.task===d.id);
-    if(th){ switchTab("inbox"); openThread(d.id); return; }
-    // no thread: offer the node's actions (restart / start / mark done)
-    if(d.kind==="session") openNodeMenu(d,ev);
-  }
-
-  // ---------- node context menu ----------
-  const nodeMenuEl=document.getElementById("nodemenu");
-  function hasThread(id){ return !!(inboxData && inboxData.threads.find(t=>t.task===id)); }
-  function openNodeMenu(d,ev){
-    const items=[];
-    if(d.id==="user"){
-      items.push({ic:"✉",label:"Open inbox",cls:"",fn:()=>switchTab("inbox")});
-    } else {
-      const live=runOf(d)==="live";
-      items.push({ic:"⧉",label:live?"Watch session":"View transcript",sub:live?"live":"",cls:"",fn:()=>openTranscript(d.id)});
-      if(hasThread(d.id)) items.push({ic:"✉",label:"Open thread",cls:"",fn:()=>{switchTab("inbox");openThread(d.id);}});
-      if(d.launch==="restart") items.push({ic:"↻",label:"Restart run",sub:"--auto --fresh",cls:"restart",fn:()=>launchTask(d.id,"restart")});
-      if(d.launch==="start") items.push({ic:"▷",label:"Start run",sub:"flow do --auto",cls:"start",fn:()=>launchTask(d.id,"start")});
-      const r=runOf(d);
-      if(d.kind==="session" && r!=="done") items.push({ic:"✓",label:"Mark done",sub:"flow done",cls:"done",fn:()=>markDone(d.id)});
-      items.push({ic:"◎",label:"Focus neighbors",cls:"",fn:()=>{ focusNode(d,{clientX:ev.clientX,clientY:ev.clientY}); setTimeout(unfocus,2200); }});
-    }
-    const rLabel={live:"● live",idle:"◌ idle",crashed:"✕ crashed",done:"done",backlog:"backlog"}[runOf(d)]||d.kind;
-    nodeMenuEl.innerHTML=`<div class="nm-head"><div class="nm-slug">${esc(d.id)}</div><div class="nm-state">${rLabel}</div></div>`;
-    items.forEach(it=>{
-      const b=document.createElement("button"); b.className="nm-item "+(it.cls||"");
-      b.innerHTML=`<span class="nm-ic">${it.ic}</span><span>${it.label}</span>`+(it.sub?`<span class="nm-sub">${it.sub}</span>`:"");
-      b.onclick=()=>{ closeNodeMenu(); it.fn(); };
-      nodeMenuEl.appendChild(b);
-    });
-    nodeMenuEl.hidden=false;
-    // position, clamped to viewport
-    const mw=nodeMenuEl.offsetWidth, mh=nodeMenuEl.offsetHeight;
-    let x=ev.clientX+6, y=ev.clientY+6;
-    if(x+mw>innerWidth-8) x=innerWidth-mw-8;
-    if(y+mh>innerHeight-8) y=ev.clientY-mh-6;
-    nodeMenuEl.style.left=x+"px"; nodeMenuEl.style.top=Math.max(8,y)+"px";
-  }
-  function closeNodeMenu(){ nodeMenuEl.hidden=true; }
-  document.addEventListener("click",e=>{ if(!nodeMenuEl.hidden && !nodeMenuEl.contains(e.target)) closeNodeMenu(); });
-  document.addEventListener("keydown",e=>{ if(e.key==="Escape") closeNodeMenu(); });
-  window.addEventListener("blur",closeNodeMenu);
-
-  function pullInbox(){
-    fetch("/api/inbox",{cache:"no-store"}).then(r=>r.json()).then(v=>{
-      if(v.error) return;
-      inboxData=v; renderInboxBadge();
-      if(activeTab==="inbox") renderInbox();
-    }).catch(()=>{});
-  }
-  function renderInboxBadge(){
-    const u=inboxData?inboxData.unread:0, o=inboxData?inboxData.owe:0;
-    if(u>0){ inboxBadge.hidden=false; inboxBadge.classList.remove("calm"); inboxBadge.textContent=u; }
-    else if(o>0){ inboxBadge.hidden=false; inboxBadge.classList.add("calm"); inboxBadge.textContent=o; }
-    else inboxBadge.hidden=true;
-  }
-
-  function sig(){
-    if(!inboxData) return "x";
-    const ts=inboxData.threads.map(t=>[t.task,t.state,t.unread,t.messages.length,t.latest_at].join(":")).join("|");
-    return activeTab+"/"+(openThreadTask||"")+"/"+ts;
-  }
-  function renderInbox(){
-    if(!inboxData){ inboxEl.innerHTML='<div class="inbox-empty">connecting…</div>'; return; }
-    if(openThreadTask===COMPOSE){
-      if(!inboxEl.querySelector(".compose-pick")) renderCompose(); // don't clobber while typing
-      return;
-    }
-    const s=sig(); if(s===lastSig) return; lastSig=s; // skip needless rebuilds (keeps composer intact)
-    if(openThreadTask){
-      const th=inboxData.threads.find(t=>t.task===openThreadTask);
-      if(th){ renderThread(th); return; }
-      openThreadTask=null;
-    }
-    renderThreadList();
-  }
-
-  function renderThreadList(){
-    const list=document.createElement("div"); list.className="inbox-list";
-    const nb=document.createElement("button"); nb.className="newbtn"; nb.textContent="✎  New message to an agent";
-    nb.onclick=openCompose; list.appendChild(nb);
-    if(!inboxData.threads.length){
-      const e=document.createElement("div"); e.className="inbox-empty"; e.innerHTML="inbox zero 🎉<br>no agent is waiting on you"; list.appendChild(e);
-    } else inboxData.threads.forEach(th=>{
-      const last=th.messages[th.messages.length-1];
-      const prevTxt=(last?(last.dir==="out"?"you: ":"")+last.body:"").replace(/\s+/g," ");
-      const prevTick=(last&&last.dir==="out")?tick(last.status)+" ":"";
-      let right="";
-      if(th.state==="unread") right=`${th.urgent?'<span class="th-urgent">URGENT</span>':''}<span class="th-badge">${th.unread}</span>`;
-      else if(th.state==="owe-reply") right=`<span class="th-star" title="you owe a reply">★</span>`;
-      else if(th.state==="closed") right=`<span class="th-closed" title="closed — agent finished, can't reply">🔒</span>`;
-      else right=`<span class="th-chk" title="answered">✓</span>`;
-      const c=document.createElement("button");
-      c.className="tcard "+th.state;
-      c.innerHTML=`<div class="th-top"><span class="th-name">${esc(th.name)}</span><span class="th-time">${ago(th.latest_at)}</span></div>`+
-                  `<div class="th-top"><span class="th-prev">${prevTick}${esc(prevTxt)}</span>${right}</div>`;
-      c.onclick=()=>openThread(th.task);
-      list.appendChild(c);
-    });
-    inboxEl.replaceChildren(list);
-  }
-
-  function openCompose(){
-    openThreadTask=COMPOSE; lastSig="";
-    fetch("/api/agents",{cache:"no-store"}).then(r=>r.json()).then(a=>{
-      composeAgents=a||[];
-      if(!inboxEl.querySelector("textarea")||!inboxEl.querySelector("textarea").value) renderCompose();
-    }).catch(()=>{});
-    renderCompose();
-  }
-
-  function renderCompose(){
-    const wrap=document.createElement("div"); wrap.className="compose";
-    const head=document.createElement("div"); head.className="thread-head";
-    head.innerHTML=`<button class="back" title="back">‹</button><span class="tn">New message</span><span class="ts">start a thread</span>`;
-    head.querySelector(".back").onclick=()=>{ openThreadTask=null; lastSig=""; renderInbox(); };
-    const pick=document.createElement("div"); pick.className="compose-pick";
-    const opts=composeAgents.length
-      ? composeAgents.map(a=>`<option value="${esc(a.slug)}">${esc(a.name||a.slug)} · ${esc(a.slug)}</option>`).join("")
-      : `<option value="">no in-progress agents to message</option>`;
-    pick.innerHTML=`<label>To agent · in-progress session</label><select>${opts}</select>`;
-    const mid=document.createElement("div"); mid.className="compose-hint";
-    mid.innerHTML="Sends a directed message to that agent's session.<br>It lands in the agent's inbox for its next turn.";
-    const sel=pick.querySelector("select");
-    const comp=document.createElement("div"); comp.className="thread-composer";
-    const ta=document.createElement("textarea"); ta.placeholder="message…"; ta.rows=1;
-    const btn=document.createElement("button"); btn.textContent="Send";
-    const send=()=>{ const t=ta.value.trim(), task=sel.value; if(!t||!task){ return; } btn.disabled=true;
-      fetch(`/api/threads/${encodeURIComponent(task)}/reply`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:t})})
-        .then(r=>r.json()).then(j=>{ if(j.error) throw new Error(j.error); openThread(task); pullInbox(); })
-        .catch(e=>{ btn.disabled=false; mid.innerHTML='<span style="color:var(--urgent)">'+esc(e.message||String(e))+'</span>'; });
-    };
-    btn.onclick=send; ta.onkeydown=(e)=>{ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); send(); } };
-    comp.appendChild(ta); comp.appendChild(btn);
-    wrap.appendChild(head); wrap.appendChild(pick); wrap.appendChild(mid); wrap.appendChild(comp);
-    inboxEl.replaceChildren(wrap);
-  }
-
-  function openThread(task){
-    openThreadTask=task;
-    const th=inboxData && inboxData.threads.find(t=>t.task===task);
-    if(th && th.pending_ids && th.pending_ids.length){
-      // pop-on-seen: ack the pending inbound ids, stop flow escalation
-      fetch(`/api/threads/${encodeURIComponent(task)}/seen`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({ids:th.pending_ids})})
-        .then(()=>pullInbox()).catch(()=>{});
-      th.pending_ids=[]; th.unread=0; if(th.state==="unread") th.state=th.repliable?"owe-reply":"closed"; // optimistic
-      renderInboxBadge();
-    }
-    lastSig=""; renderInbox();
-  }
-
-  function renderThread(th){
-    const wrap=document.createElement("div"); wrap.className="thread";
-    const head=document.createElement("div"); head.className="thread-head";
-    head.innerHTML=`<button class="back" title="back">‹</button><span class="tn">${esc(th.task)}</span><span class="ts">${esc(th.name)}</span>`;
-    head.querySelector(".back").onclick=()=>{ openThreadTask=null; lastSig=""; renderInbox(); };
-    const msgs=document.createElement("div"); msgs.className="thread-msgs";
-    th.messages.forEach(m=>{
-      const b=document.createElement("div"); b.className="bubble "+m.dir+(m.urgent?" urgent":"");
-      const who=m.dir==="in"?esc(th.task):"you";
-      let extra="";
-      if(m.dir==="in" && m.status==="pending") extra=' · <span class="tick sent">● new</span>';
-      if(m.dir==="out") extra=" · "+tick(m.status);
-      b.innerHTML=`${esc(m.body)}<div class="b-meta">${who} · ${ago(m.at)}${extra}</div>`;
-      msgs.appendChild(b);
-    });
-    wrap.appendChild(head); wrap.appendChild(msgs);
-    if(th.repliable){
-      const comp=document.createElement("div"); comp.className="thread-composer";
-      const ta=document.createElement("textarea"); ta.placeholder="reply to "+th.task+"…"; ta.rows=1;
-      const btn=document.createElement("button"); btn.textContent="Send";
-      const send=()=>{ const t=ta.value.trim(); if(!t)return; btn.disabled=true; sendReply(th.task,t,ta,btn,msgs); };
-      btn.onclick=send;
-      ta.onkeydown=(e)=>{ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); send(); } };
-      comp.appendChild(ta); comp.appendChild(btn); wrap.appendChild(comp);
-    } else {
-      const lock=document.createElement("div"); lock.className="composer-locked";
-      lock.textContent="🔒 "+(th.lock_reason||"can't reply to this thread");
-      wrap.appendChild(lock);
-    }
-    inboxEl.replaceChildren(wrap);
-    msgs.scrollTop=msgs.scrollHeight;
-  }
-
-  function sendReply(task,text,ta,btn,msgs){
-    const b=document.createElement("div"); b.className="bubble out sending";
-    b.innerHTML=`${esc(text)}<div class="b-meta">you · sending…</div>`;
-    msgs.appendChild(b); msgs.scrollTop=msgs.scrollHeight;
-    fetch(`/api/threads/${encodeURIComponent(task)}/reply`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text})})
-      .then(r=>r.json()).then(j=>{
-        if(j.error) throw new Error(j.error);
-        ta.value=""; btn.disabled=false;
-        b.classList.remove("sending"); b.querySelector(".b-meta").innerHTML="you · just now · "+tick("pending");
-        lastSig=""; pullInbox();
-      }).catch(e=>{
-        btn.disabled=false; b.classList.remove("sending"); b.classList.add("failed");
-        b.querySelector(".b-meta").textContent="failed: "+(e.message||e)+" · tap Send to retry";
-      });
-  }
-
-  // ---------- theme + resize ----------
-  const themeBtn=document.getElementById("theme");
-  const stored=(()=>{try{return localStorage.getItem("flowhub-theme");}catch(e){return null;}})();
-  if(stored) document.documentElement.setAttribute("data-theme",stored);
-  else if(window.matchMedia && matchMedia("(prefers-color-scheme: light)").matches) document.documentElement.setAttribute("data-theme","light");
-  themeBtn.onclick=()=>{ const cur=document.documentElement.getAttribute("data-theme")==="light"?"dark":"light";
-    document.documentElement.setAttribute("data-theme",cur); try{localStorage.setItem("flowhub-theme",cur);}catch(e){} };
-
-  // ---------- stale (dead >3d) toggle ----------
-  const showAllBtn=document.getElementById("showall");
-  function paintStaleToggle(hidden){
-    if(!showAll && hidden===0){ showAllBtn.hidden=true; return; }
-    showAllBtn.hidden=false;
-    showAllBtn.textContent = showAll ? "hide old" : "+"+hidden+" old";
-    showAllBtn.title = showAll ? "Hide sessions that finished more than 3 days ago"
-                               : hidden+" session(s) finished >3 days ago are hidden — click to show";
-    showAllBtn.classList.toggle("on", showAll);
-  }
-  showAllBtn.onclick=()=>{
-    showAll=!showAll;
-    try{ localStorage.setItem("flowhub-showall", showAll?"1":"0"); }catch(e){}
-    if(lastHub) apply(lastHub); // re-filter with existing data; positions preserved
-  };
-
-  function resize(){ W=stageEl.clientWidth; H=stageEl.clientHeight; svg.attr("viewBox",`0 0 ${W} ${H}`);
-    sim.force("center",d3.forceCenter(W/2,H/2)); sim.force("x",d3.forceX(W/2).strength(.06)); sim.force("y",d3.forceY(H/2).strength(.06)); sim.alpha(.3).restart(); }
-  window.addEventListener("resize",resize); resize();
-
-  // ---------- launcher (flow do --auto from the UI) ----------
-  const launchBtn=document.getElementById("launch");
-  const launcherEl=document.getElementById("launcher");
-  const lcList=document.getElementById("lc-list");
-  const lcFilter=document.getElementById("lc-filter");
-  const lcEmpty=document.getElementById("lc-empty");
-  let launchable=[]; let launcherOpen=false;
-
-  function toast(msg,kind){
-    const host=document.getElementById("toast-host");
-    const t=document.createElement("div"); t.className="toast "+(kind||"");
-    t.textContent=msg; host.appendChild(t);
-    requestAnimationFrame(()=>t.classList.add("on"));
-    setTimeout(()=>{ t.classList.remove("on"); setTimeout(()=>t.remove(),250); }, 3200);
-  }
-
-  function renderLauncher(){
-    const q=lcFilter.value.trim().toLowerCase();
-    const rows=launchable.filter(x=>!q || x.slug.toLowerCase().includes(q) || (x.name||"").toLowerCase().includes(q));
-    lcList.innerHTML="";
-    lcEmpty.hidden = rows.length>0;
-    let lastState="";
-    rows.forEach(x=>{
-      if(x.state!==lastState){ lastState=x.state;
-        const h=document.createElement("div"); h.className="lc-group";
-        h.textContent = x.state==="crashed" ? "crashed — restart" : "backlog — start";
-        lcList.appendChild(h);
-      }
-      const row=document.createElement("div"); row.className="lc-row";
-      row.innerHTML=`<span class="lc-dot ${x.state}"></span>`+
-        `<span class="lc-name" title="${esc(x.name||x.slug)}">${esc(x.name||x.slug)}<div class="lc-slug">${esc(x.slug)}</div></span>`+
-        `<button class="lc-go ${x.verb==="restart"?"restart":""}">${x.verb}</button>`+
-        `<button class="lc-done" title="flow done ${esc(x.slug)}">✓ done</button>`;
-      row.querySelector(".lc-go").onclick=(ev)=>{ ev.stopPropagation(); launchTask(x.slug, x.verb, ev.currentTarget); };
-      row.querySelector(".lc-done").onclick=(ev)=>{ ev.stopPropagation(); markDone(x.slug, ev.currentTarget); };
-      lcList.appendChild(row);
-    });
-  }
-
-  function loadLaunchable(){
-    return fetch("/api/launchable",{cache:"no-store"}).then(r=>r.json()).then(d=>{
-      launchable=Array.isArray(d)?d:[];
-      const crashed=launchable.filter(x=>x.state==="crashed").length;
-      const back=launchable.filter(x=>x.state==="backlog").length;
-      launchBtn.title=`Launch flow do --auto — ${back} backlog to start, ${crashed} crashed to restart`;
-      if(launcherOpen) renderLauncher();
-    }).catch(()=>{});
-  }
-
-  function openLauncher(){ launcherOpen=true; launcherEl.hidden=false; launchBtn.classList.add("on");
-    loadLaunchable().then(()=>{ renderLauncher(); lcFilter.focus(); }); }
-  function closeLauncher(){ launcherOpen=false; launcherEl.hidden=true; launchBtn.classList.remove("on"); }
-  launchBtn.onclick=()=>{ launcherOpen?closeLauncher():openLauncher(); };
-  document.getElementById("lc-close").onclick=closeLauncher;
-  lcFilter.oninput=renderLauncher;
-  document.addEventListener("keydown",e=>{ if(e.key==="Escape"&&launcherOpen) closeLauncher(); });
-
-  function markDone(slug, btnEl){
-    if(btnEl){ btnEl.disabled=true; btnEl.textContent="…"; }
-    fetch(`/api/tasks/${encodeURIComponent(slug)}/done`,{method:"POST"})
-      .then(async r=>{ const j=await r.json().catch(()=>({})); if(!r.ok) throw new Error(j.error||("HTTP "+r.status)); return j; })
-      .then(()=>{ toast(`marked ${slug} done`, "ok");
-        loadLaunchable(); pull(); // flow done is synchronous — reflect now
-        if(btnEl){ btnEl.textContent="done ✓"; } })
-      .catch(e=>{ toast(`couldn't finish ${slug}: ${e.message||e}`, "err");
-        if(btnEl){ btnEl.disabled=false; btnEl.textContent="✓ done"; } });
-  }
-
-  function launchTask(slug, verb, btnEl){
-    if(btnEl){ btnEl.disabled=true; btnEl.textContent="…"; }
-    fetch(`/api/tasks/${encodeURIComponent(slug)}/run-auto`,{method:"POST"})
-      .then(async r=>{ const j=await r.json().catch(()=>({})); if(!r.ok) throw new Error(j.error||("HTTP "+r.status)); return j; })
-      .then(j=>{
-        toast(`${verb==="restart"?"restarting":"started"} ${slug} — headless run launching`, "ok");
-        // give flow a moment to register the new session, then refresh state
-        setTimeout(()=>{ loadLaunchable(); pull(); }, 2500);
-        if(btnEl){ btnEl.textContent="launched"; }
-      })
-      .catch(e=>{ toast(`couldn't launch ${slug}: ${e.message||e}`, "err");
-        if(btnEl){ btnEl.disabled=false; btnEl.textContent=verb; } });
-  }
-
-  // ---------- transcript viewer (simulated claude interface) ----------
-  const trOverlay=document.getElementById("tr-overlay");
-  const trBody=document.getElementById("tr-body");
-  const trOutput=document.getElementById("tr-output");
-  const trFollow=document.getElementById("tr-follow");
-  let trSlug=null, trTimer=null, trLoading=false;
-
-  function fmtText(s){ // escape, then light inline markdown (code + bold)
-    let h=esc(s);
-    h=h.replace(/`([^`]+)`/g,'<code>$1</code>');
-    h=h.replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>');
-    return h;
-  }
-  function firstLine(s){ const l=(s||"").split("\n").find(x=>x.trim()); return l?l.trim():"(empty)"; }
-  // one-line summary for the tool header (Bash: the command; else first line)
-  function toolSummary(t){ let s=firstLine(t.body); if(t.tool==="Bash"&&s.startsWith("$ ")) s=s.slice(2); return s; }
-
-  // Injected content that flow renders as a "User" turn but which is really
-  // machinery (the autonomous bootstrap prompt, a skill body pasted in). Fold
-  // these to a slim chip so the transcript reads like a real Claude session.
-  function systemInjection(body){
-    const b=body||"";
-    if(/^You are an AUTONOMOUS/.test(b)) return {label:"session bootstrap (autonomous)"};
-    if(/^Base directory for this skill:/.test(b)){
-      const m=b.match(/skills\/([A-Za-z0-9._-]+)/); const h=b.match(/\n#\s+([^\n]+)/);
-      return {label:"skill injected: "+(m?m[1]:(h?h[1]:"skill"))};
-    }
-    if(/^<system-reminder>/.test(b)) return {label:"system reminder"};
-    return null;
-  }
-  // dim, collapsible one-liner for injected machinery
-  function sysChip(label,body){
-    const frag=document.createDocumentFragment();
-    const hd=document.createElement("div"); hd.className="tl sys";
-    hd.innerHTML=`<span class="gutter">⏵ </span>${esc(label)} <span class="caret">▸</span>`;
-    const bd=document.createElement("div"); bd.className="tl-sysbody"; bd.textContent=body||"";
-    hd.onclick=()=>hd.classList.toggle("open");
-    frag.appendChild(hd); frag.appendChild(bd);
-    return frag;
-  }
-  // a user (> ) or assistant (⏺ ) terminal line, clamped if very long
-  function termLine(role,body){
-    const el=document.createElement("div");
-    el.className = role==="user" ? "tl user" : "tl asst";
-    el.innerHTML = role==="user" ? `<span class="gutter">&gt; </span>`+fmtText(body) : fmtText(body);
-    if((body||"").length>1100){
-      const frag=document.createDocumentFragment();
-      el.classList.add("tl-clamp"); frag.appendChild(el);
-      const more=document.createElement("button"); more.className="tl-more"; more.textContent="show more";
-      more.onclick=()=>{ const c=el.classList.toggle("tl-clamp"); more.textContent=c?"show more":"show less"; };
-      frag.appendChild(more); return frag;
-    }
-    return el;
-  }
-  // ● Tool(summary) with ⎿ output; collapsed shows a 1-line preview, click to expand
-  function toolBlock(t, result){
-    const tw=document.createElement("div"); tw.className="tl-tw";
-    const hd=document.createElement("div"); hd.className="tl tool"+(result&&result.error?" err":"");
-    hd.innerHTML=`<span class="dot">● </span><span class="tname">${esc(t.tool)}</span>`+
-      `<span class="targs"> ${esc(toolSummary(t))}</span> <span class="caret">▸</span>`;
-    hd.onclick=()=>tw.classList.toggle("open");
-    tw.appendChild(hd);
-    if(result){
-      const lines=(result.body||"").split("\n");
-      const pv=document.createElement("div"); pv.className="tl-out preview"+(result.error?" err":"");
-      pv.innerHTML=`<span class="conn">⎿ </span>${esc(lines[0]||"")}`+
-        (lines.length>1?` <span class="conn">… +${lines.length-1} lines</span>`:"");
-      tw.appendChild(pv);
-    }
-    const det=document.createElement("div"); det.className="tl-detail";
-    const cmd=document.createElement("div"); cmd.className="tl-cmd"; cmd.textContent=t.body||"";
-    det.appendChild(cmd);
-    if(result){
-      const full=document.createElement("div"); full.className="tl-full"+(result.error?" err":"");
-      full.textContent=result.body||""; det.appendChild(full);
-    }
-    tw.appendChild(det);
-    return tw;
-  }
-
-  function renderTranscript(data){
-    const turns=data.turns||[];
-    trBody.innerHTML="";
-    if(!turns.length){ trBody.innerHTML=`<div class="tt-empty">no transcript yet — the session hasn't produced turns.</div>`; return; }
-    for(let i=0;i<turns.length;i++){
-      const t=turns[i];
-      if(t.role==="user"){
-        const sys=systemInjection(t.body);
-        trBody.appendChild(sys ? sysChip(sys.label,t.body) : termLine("user",t.body));
-      }
-      else if(t.role==="assistant"){ trBody.appendChild(termLine("assistant",t.body)); }
-      else if(t.role==="tool"){
-        let result=null;
-        if(turns[i+1] && turns[i+1].role==="result"){ result=turns[i+1]; i++; }
-        trBody.appendChild(toolBlock(t,result));
-      } else if(t.role==="result"){ // stray result with no preceding tool
-        trBody.appendChild(toolBlock({tool:"result",body:""},t));
       }
     }
-    // header + foot
-    document.getElementById("tr-slug").textContent=data.name?`${data.name}`:data.slug;
-    const st=document.getElementById("tr-state"); st.textContent=data.run_state||""; st.className="tr-state "+(data.run_state||"");
-    const rs=data.run_state;
-    document.getElementById("tr-foot").textContent=
-      `${turns.length} turns · ${data.slug}${rs==="live"&&trFollow.checked?" · following live":""} · updated ${new Date().toLocaleTimeString()}`;
+    $("#mid").innerHTML = `
+      <div class="mid-h">
+        <h2><span class="hash">${ch.slug==="_floating"?"~":"#"}</span>${esc(ch.name || ch.slug)}</h2>
+        <div class="sub">${ch.total||0} tasks · ${ch.open||0} open · ${ch.live||0} live · ${ch.attention||0} need attention</div>
+        <div class="filters">${FILTERS.map(([k,l]) => `<button class="flt ${f===k?"on":""}" data-f="${k}">${l}<span class="c">${counts[k]}</span></button>`).join("")}</div>
+      </div>
+      <div class="list">${body || `<div class="placeholder">nothing here</div>`}</div>`;
   }
 
-  function nearBottom(){ return trBody.scrollHeight-trBody.scrollTop-trBody.clientHeight < 120; }
-  function loadTranscript(forceBottom){
-    if(!trSlug||trLoading) return Promise.resolve();
-    trLoading=true;
-    const stick=forceBottom||nearBottom();
-    return fetch(`/api/transcript/${encodeURIComponent(trSlug)}?compact=${trOutput.checked?0:1}`,{cache:"no-store"})
-      .then(r=>r.json()).then(data=>{
-        if(data.error) throw new Error(data.error);
-        if(trSlug!==data.slug) return; // switched/closed mid-flight
-        renderTranscript(data);
-        if(stick){ const sb=()=>{ trBody.scrollTop=trBody.scrollHeight; };
-          sb(); requestAnimationFrame(sb); setTimeout(sb,130); }
-        // manage live-follow timer based on state + toggle
-        if(data.run_state==="live" && trFollow.checked){ if(!trTimer) trTimer=setInterval(()=>loadTranscript(false), 4000); }
-        else { clearInterval(trTimer); trTimer=null; }
-      }).catch(e=>{ trBody.innerHTML=`<div class="tt-empty">couldn't load transcript: ${esc(e.message||String(e))}</div>`; })
-      .finally(()=>{ trLoading=false; });
+  // ---------- render: thread ----------
+  function evHTML(e){
+    const t = `<div class="t">${hhmm(e.time)}</div>`;
+    let k = "", b = "";
+    switch (e.kind) {
+      case "created": k = `<span class="tagk note">task</span> created`; break;
+      case "auto_start": k = `<span class="tagk auto">auto</span> run started`; break;
+      case "auto_end": k = `<span class="tagk auto">auto</span> run ${esc(e.body)}`; break;
+      case "note":
+        k = `<span class="tagk note">note</span>`;
+        b = `<details><summary>${esc(e.title)}</summary><div class="md">${md(e.body)}</div></details>`; break;
+      default: {
+        const kind = e.kind === "broadcast" ? "broadcast" : "message";
+        k = `<span class="tagk ${kind}">${kind === "broadcast" ? "broadcast" : "msg"}</span>${e.urgent ? `<span class="tagk urgent">urgent</span>` : ""}
+             <span class="who">${esc(e.from || "?")}</span> → <span class="who">${esc(e.to || "?")}</span>`;
+        b = `<div class="body ${e.to==="you"?"you":""}">${esc(e.body)}</div>`;
+      }
+    }
+    return `<div class="ev">${t}<div><div class="k">${k}</div>${b}</div></div>`;
   }
-  function openTranscript(slug){
-    trSlug=slug; trOverlay.hidden=false;
-    document.getElementById("tr-slug").textContent=slug;
-    trBody.innerHTML=`<div class="tt-empty">loading…</div>`;
-    loadTranscript(true);
+  function renderThread(){
+    const th = st.thread, el = $("#thread"); if (!th) { el.hidden = true; return; }
+    el.hidden = false;
+    const s = stateOf(th);
+    const facts = [
+      th.project ? `#${th.project}` : "no project",
+      th.priority ? `${th.priority} priority` : "",
+      th.auto ? `auto ${th.auto_status || ""}${th.auto_started ? " · " + dur(th.auto_started, th.auto_finished) : ""}` : "",
+      th.waiting_on ? `waiting on: ${th.waiting_on}` : "",
+      `${th.messages} msgs`,
+    ].filter(Boolean);
+    let lastDay = "", evs = "";
+    for (const e of [...(th.events || [])].reverse()) {
+      const d = dayLabel(e.time); if (d !== lastDay) { evs += `<div class="day">${d}</div>`; lastDay = d; }
+      evs += evHTML(e);
+    }
+    const longBrief = (th.brief || "").split("\n").length > 12;
+    el.innerHTML = `
+      <div class="th-h">
+        <div class="slug"><span class="dot ${s.dot}"></span>${esc(th.slug)}<span class="pill ${s.pill}">${esc(s.label)}</span><button class="ibtn x" id="closeth" title="Close">✕</button></div>
+        ${th.name ? `<div class="name">${esc(th.name)}</div>` : ""}
+        <div class="facts">${facts.map(f => `<span class="fact">${esc(f)}</span>`).join("")}</div>
+      </div>
+      ${th.brief ? `<div class="brief ${longBrief && !st.briefOpen ? "clip" : ""}"><div class="lbl">Brief</div><div class="md">${md(th.brief)}</div>
+        ${longBrief ? `<button class="tog" id="brieftog">${st.briefOpen ? "show less" : "show full brief"}</button>` : ""}</div>` : ""}
+      ${evs || `<div class="placeholder">no activity yet</div>`}
+      <div class="readonly">newest first · read-only view</div>`;
   }
-  function closeTranscript(){ trSlug=null; trOverlay.hidden=true; clearInterval(trTimer); trTimer=null; }
-  document.getElementById("tr-close").onclick=closeTranscript;
-  trOverlay.addEventListener("click",e=>{ if(e.target===trOverlay) closeTranscript(); });
-  document.addEventListener("keydown",e=>{ if(e.key==="Escape"&&!trOverlay.hidden) closeTranscript(); });
-  trOutput.onchange=()=>loadTranscript(true);
-  trFollow.onchange=()=>loadTranscript(false);
 
-  // ---------- go ----------
-  loadLaunchable(); setInterval(loadLaunchable, POLL_MS*3);
-  pull(); setInterval(pull, POLL_MS);
-  pullInbox(); setInterval(pullInbox, POLL_MS);
+  // ---------- events ----------
+  $("#side").addEventListener("click", e => {
+    const r = e.target.closest(".row"); if (!r) return;
+    const ch = r.dataset.ch, live = r.dataset.live;
+    if (ch && ch !== sel.c) { sel.c = ch; loadChannel(ch, true); }
+    if (live) { sel.t = live; loadThread(live, true); }
+    $("#side").classList.remove("show");
+    writeHash(sel); renderSide();
+  });
+  $("#mid").addEventListener("click", e => {
+    const fb = e.target.closest("[data-f]"); if (fb) { st.filter = fb.dataset.f; renderMid(); return; }
+    if (e.target.closest("[data-more]")) { st.showEarlier = true; renderMid(); return; }
+    const c = e.target.closest("[data-t]"); if (!c) return;
+    sel.t = c.dataset.t; writeHash(sel); renderMid(); renderSide(); loadThread(sel.t, true);
+  });
+  $("#thread").addEventListener("click", e => {
+    if (e.target.closest("#closeth")) { sel.t = null; st.thread = null; writeHash(sel); $("#thread").hidden = true; renderMid(); renderSide(); }
+    if (e.target.closest("#brieftog")) { st.briefOpen = !st.briefOpen; renderThread(); }
+  });
+  $("#find").addEventListener("input", renderSide);
+  $("#menu").addEventListener("click", () => $("#side").classList.toggle("show"));
+  document.addEventListener("keydown", e => { if (e.key === "Escape" && sel.t) $("#closeth")?.click(); });
+
+  // ---------- tabs ----------
+  function showView(v){
+    sel.v = v; writeHash(sel);
+    document.querySelectorAll(".tab").forEach(t => t.classList.toggle("on", t.dataset.view === v));
+    $("#channelsview").hidden = v !== "channels"; $("#graphview").hidden = v !== "graph";
+    if (v === "graph" && !$("#graphview iframe")) $("#graphview").innerHTML = `<iframe src="/graph" title="Graph"></iframe>`;
+  }
+  document.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () => showView(t.dataset.view)));
+
+  // ---------- theme (shared key with the graph page) ----------
+  const root = document.documentElement;
+  try { const s = localStorage.getItem("flowhub-theme"); if (s) root.setAttribute("data-theme", s); else if (matchMedia("(prefers-color-scheme: light)").matches) root.setAttribute("data-theme","light"); } catch(e) {}
+  $("#theme").addEventListener("click", () => {
+    const cur = root.getAttribute("data-theme") === "light" ? "dark" : "light";
+    root.setAttribute("data-theme", cur); try { localStorage.setItem("flowhub-theme", cur); } catch(e) {}
+    const fr = $("#graphview iframe"); try { fr && fr.contentDocument.documentElement.setAttribute("data-theme", cur); } catch(e) {}
+  });
+
+  window.addEventListener("hashchange", () => {
+    sel = readHash(); showView(sel.v === "graph" ? "graph" : "channels");
+    if (sel.c) loadChannel(sel.c, true);
+    if (sel.t) loadThread(sel.t, true); else $("#thread").hidden = true;
+    renderSide();
+  });
+  showView(sel.v === "graph" ? "graph" : "channels");
+  refresh();
+  setInterval(() => { if (!document.hidden && sel.v !== "graph") refresh(); }, POLL_MS);
 })();
 </script>
 </body>

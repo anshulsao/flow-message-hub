@@ -15,7 +15,10 @@ import (
 )
 
 //go:embed index.html
-var indexHTML []byte
+var channelsHTML []byte
+
+//go:embed graph.html
+var graphHTML []byte
 
 func defaultDBPath() string {
 	if p := os.Getenv("FLOW_DB"); p != "" {
@@ -263,13 +266,22 @@ func main() {
 		}
 	})
 
+	registerChannelRoutes(mux, st, filepath.Dir(*dbPath))
+
+	page := func(body []byte) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.Header().Set("Cache-Control", "no-store")
+			_, _ = w.Write(body)
+		}
+	}
+	mux.HandleFunc("/graph", page(graphHTML))
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {
 			http.NotFound(w, r)
 			return
 		}
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write(indexHTML)
+		page(channelsHTML)(w, r)
 	})
 
 	log.Printf("flow message hub -> http://%s", *addr)
