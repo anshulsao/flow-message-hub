@@ -268,6 +268,7 @@ func main() {
 
 	home, _ := os.UserHomeDir()
 	registerChannelRoutes(mux, st, filepath.Dir(*dbPath), filepath.Join(home, ".claude", "projects"))
+	registerStatusRoute(mux, st, fx)
 
 	page := func(body []byte) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {

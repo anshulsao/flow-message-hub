@@ -181,6 +181,22 @@
   .thread{overflow-x:hidden;}
   .msg > div, .ms details{min-width:0;}
   .msg .tx pre{max-width:100%;overflow-x:auto;}
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;margin-top:10px;}
+  .seg button{background:var(--panel-2);border:0;border-right:1px solid var(--line);padding:3px 11px;font-size:12px;color:var(--muted);cursor:pointer;}
+  .seg button:last-child{border-right:0;}
+  .seg button:hover:not(:disabled){color:var(--ink);background:var(--hover);}
+  .seg button.cur{background:var(--warn-soft);color:var(--ink);font-weight:600;cursor:default;}
+  .seg button:disabled{opacity:.6;}
+  .segrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+  .segmsg{font:11.5px "IBM Plex Mono",monospace;color:var(--faint);margin-top:10px;}
+  .segmsg.err{color:var(--bad);}
+  .segmsg.ok{color:var(--done);}
+  .segmsg button{background:var(--bad-soft);color:var(--bad);border:1px solid var(--bad);border-radius:6px;padding:1px 8px;margin-left:6px;cursor:pointer;font:600 11px "IBM Plex Sans",sans-serif;}
+  .tgl{margin-left:auto;display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);cursor:pointer;user-select:none;}
+  .tgl .sw{width:28px;height:16px;border-radius:999px;background:var(--line);position:relative;transition:.15s;}
+  .tgl .sw:after{content:"";position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;background:var(--faint);transition:.15s;}
+  .tgl.on .sw{background:var(--done-soft);}
+  .tgl.on .sw:after{left:14px;background:var(--done);}
   .nosess{margin:10px 18px;padding:10px 12px;border-radius:8px;background:var(--panel-2);color:var(--faint);font:12px "IBM Plex Mono",monospace;}
   @media (max-width:1100px){ .ch{grid-template-columns:220px minmax(0,1fr);} .thread{position:fixed;right:0;top:48px;bottom:0;width:min(460px,100%);box-shadow:-20px 0 40px rgba(0,0,0,.35);z-index:5;} }
   @media (max-width:720px){ .ch{grid-template-columns:1fr;} .side{display:none;} .side.show{display:block;position:fixed;inset:48px 0 0 0;z-index:6;} #menu{display:inline-block!important;} }
@@ -226,7 +242,8 @@
   const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 
   // ---------- state (selection lives in the URL hash) ----------
-  const st = { channels: [], live: [], cards: [], channel: null, thread: null, sess: null, filter: "all", showEarlier: false, briefOpen: false, lastOk: 0, seen: {} };
+  const st = { channels: [], live: [], cards: [], channel: null, thread: null, sess: null, filter: "all", showEarlier: false, briefOpen: false, lastOk: 0, seen: {}, showDone: false, statusMsg: null, busy: false };
+  try { st.showDone = localStorage.getItem("flowhub-showdone") === "1"; } catch(e) {}
   try { st.seen = JSON.parse(localStorage.getItem("flowhub-seen") || "{}"); } catch(e) {}
   function readHash(){ const p = new URLSearchParams(location.hash.slice(1)); return { c: p.get("c"), t: p.get("t"), v: p.get("v") }; }
   function writeHash(h){ const p = new URLSearchParams(); if (h.v && h.v!=="channels") p.set("v", h.v); if (h.c) p.set("c", h.c); if (h.t) p.set("t", h.t); history.replaceState(null, "", "#" + p.toString()); }
@@ -290,7 +307,7 @@
 
   // ---------- fetch ----------
   async function getJSON(url){ const r = await fetch(url, { cache:"no-store" }); if (!r.ok) throw new Error(r.status); return r.json(); }
-  function setConn(ok){ const b = $("#beacon"); b.className = "beacon " + (ok ? "ok" : "bad"); $("#conn").textContent = ok ? "live · read-only" : "disconnected"; }
+  function setConn(ok){ const b = $("#beacon"); b.className = "beacon " + (ok ? "ok" : "bad"); $("#conn").textContent = ok ? "live" : "disconnected"; }
 
   async function refresh(){
     try {
@@ -384,6 +401,7 @@
   }
   function renderMid(){
     const ch = st.channel; if (!ch) return;
+    if (!st.showDone && st.filter === "done") st.filter = "all";
     const by = k => st.cards.filter(c => c.section === k);
     const counts = { all: st.cards.length, active: by("active").length, attention: by("attention").length, backlog: by("backlog").length, done: by("done").length };
     let body = "";
@@ -392,7 +410,7 @@
     if (f === "all" || f === "active") body += group("Active", by("active"));
     if (f === "all" || f === "attention") body += group("Needs attention", by("attention"));
     if (f === "all" || f === "backlog") body += group("Backlog", by("backlog"));
-    if (f === "all" || f === "done") {
+    if (st.showDone && (f === "all" || f === "done")) {
       const done = by("done"), today = done.filter(c => isToday(c.last_activity)), earlier = done.filter(c => !isToday(c.last_activity));
       if (f === "done") body += group("Done", done);
       else {
@@ -408,7 +426,8 @@
       <div class="mid-h">
         <h2><span class="hash">${ch.slug==="_floating"?"~":"#"}</span>${esc(ch.name || ch.slug)}</h2>
         <div class="sub">${ch.total||0} tasks · ${ch.open||0} open · ${ch.live||0} live · ${ch.attention||0} need attention</div>
-        <div class="filters">${FILTERS.map(([k,l]) => `<button class="flt ${f===k?"on":""}" data-f="${k}">${l}<span class="c">${counts[k]}</span></button>`).join("")}</div>
+        <div class="filters">${FILTERS.filter(([k]) => k !== "done" || st.showDone).map(([k,l]) => `<button class="flt ${f===k?"on":""}" data-f="${k}">${l}<span class="c">${counts[k]}</span></button>`).join("")}
+          <span class="tgl ${st.showDone ? "on" : ""}" id="donetgl" title="Show finished tasks"><span class="sw"></span>Show done</span></div>
       </div>
       <div class="list">${body || `<div class="placeholder">nothing here</div>`}</div>`;
   }
@@ -460,6 +479,8 @@
         <div class="slug"><span class="dot ${s.dot}"></span>${esc(th.slug)}<span class="pill ${s.pill}">${esc(s.label)}</span><button class="ibtn x" id="closeth" title="Close">✕</button></div>
         ${th.name ? `<div class="name">${esc(th.name)}</div>` : ""}
         <div class="facts">${facts.map(f => `<span class="fact">${esc(f)}</span>`).join("")}</div>
+        <div class="segrow"><div class="seg">${[["backlog","Backlog"],["in-progress","In progress"],["done","Done"]].map(([k,l]) =>
+          `<button data-status="${k}" class="${th.status===k?"cur":""}" ${st.busy?"disabled":""}>${l}</button>`).join("")}</div>${statusMsgHTML(th.slug)}</div>
       </div>
       ${th.brief ? `<div class="brief ${longBrief && !st.briefOpen ? "clip" : ""}"><div class="lbl">Brief</div><div class="md">${md(th.brief)}</div>
         ${longBrief ? `<button class="tog" id="brieftog">${st.briefOpen ? "show less" : "show full brief"}</button>` : ""}</div>` : ""}
@@ -467,6 +488,22 @@
       <div class="chat">${body || `<div class="placeholder">no activity yet</div>`}</div>
       <button class="jump" id="jump" hidden>↓ latest</button>`;
     updateJump();
+  }
+  function statusMsgHTML(slug){
+    const m = st.statusMsg; if (!m || m.slug !== slug) return "";
+    return `<span class="segmsg ${m.kind}">${esc(m.text)}${m.confirm ? `<button id="confirmdone">Mark done anyway</button>` : ""}</span>`;
+  }
+  async function setStatus(slug, status, confirm){
+    st.busy = true; st.statusMsg = { slug, text: "saving…", kind: "" }; renderThread();
+    try {
+      const r = await fetch("/api/status/" + encodeURIComponent(slug), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status, confirm: !!confirm }) });
+      const d = await r.json().catch(() => ({ message: "HTTP " + r.status }));
+      if (r.ok) st.statusMsg = { slug, text: "✓ " + status, kind: "ok" };
+      else st.statusMsg = { slug, text: d.message || ("HTTP " + r.status), kind: "err", confirm: r.status === 409 && /confirm/.test(d.message || "") };
+    } catch (e) { st.statusMsg = { slug, text: "failed: " + e.message, kind: "err" }; }
+    st.busy = false;
+    await refresh();
+    if (st.statusMsg && st.statusMsg.kind === "ok") setTimeout(() => { if (st.statusMsg && st.statusMsg.kind === "ok") { st.statusMsg = null; renderThread(); } }, 3000);
   }
   function updateJump(){
     const el = $("#thread"), j = $("#jump"); if (!j) return;
@@ -484,6 +521,7 @@
   });
   $("#mid").addEventListener("click", e => {
     const fb = e.target.closest("[data-f]"); if (fb) { st.filter = fb.dataset.f; renderMid(); return; }
+    if (e.target.closest("#donetgl")) { st.showDone = !st.showDone; try { localStorage.setItem("flowhub-showdone", st.showDone ? "1" : "0"); } catch(e) {} renderMid(); return; }
     if (e.target.closest("[data-more]")) { st.showEarlier = true; renderMid(); return; }
     const c = e.target.closest("[data-t]"); if (!c) return;
     sel.t = c.dataset.t; writeHash(sel); renderMid(); renderSide(); loadThread(sel.t, true);
@@ -492,6 +530,9 @@
     if (e.target.closest("#closeth")) { sel.t = null; st.thread = null; st.sess = null; writeHash(sel); $("#thread").hidden = true; renderMid(); renderSide(); }
     if (e.target.closest("#brieftog")) { const el = $("#thread"), top = el.scrollTop; st.briefOpen = !st.briefOpen; renderThread(); el.scrollTop = top; }
     if (e.target.closest("#earlier")) loadEarlier();
+    const sb = e.target.closest("[data-status]");
+    if (sb && !sb.classList.contains("cur") && !st.busy && st.thread) setStatus(st.thread.slug, sb.dataset.status, false);
+    if (e.target.closest("#confirmdone") && st.thread) setStatus(st.thread.slug, "done", true);
     if (e.target.closest("#jump")) { const el = $("#thread"); el.scrollTop = el.scrollHeight; }
   });
   $("#thread").addEventListener("scroll", updateJump);
