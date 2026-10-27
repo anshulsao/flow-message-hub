@@ -219,6 +219,7 @@ func buildChannelList(projects []project, tasks []chanTask, msgs []rawMessage, r
 }
 
 func oneLine(s string) string {
+	s = strings.ReplaceAll(s, "```", " ")
 	s = strings.Join(strings.Fields(s), " ")
 	if r := []rune(s); len(r) > latestMax {
 		s = string(r[:latestMax-1]) + "…"
@@ -259,7 +260,8 @@ func buildCards(tasks []chanTask, msgs []rawMessage, notes map[string]note, runs
 			seen[i] = true
 			cards[i].Messages++
 			lastT[i] = later(lastT[i], ts)
-			if !ts.Before(latestT[i]) {
+			// bus text is only a fallback: the agent's own words / notes win
+			if _, has := notes[s]; !has && !ts.Before(latestT[i]) {
 				latestT[i] = ts
 				cards[i].Latest = oneLine(m.Body)
 			}

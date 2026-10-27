@@ -151,3 +151,22 @@ func TestBuildThread_MergesEventsInTimeOrder(t *testing.T) {
 		t.Errorf("brief not carried")
 	}
 }
+
+func TestBuildCards_AgentWordsBeatBusMessages(t *testing.T) {
+	tasks := []chanTask{{Slug: "tr", Name: "Tracker", Status: "in-progress", UpdatedAt: "2026-10-27T10:00:00+05:30"}}
+	msgs := []rawMessage{{FromTaskSlug: "other", ToTaskSlug: "tr", Kind: "broadcast", CreatedAt: "2026-10-27T13:00:00+05:30", Body: "someone else's news"}}
+	agent := map[string]note{"tr": {Time: mustTime("2026-10-27T12:00:00+05:30"), Title: "Sheet reconciled."}}
+	cards := buildCards(tasks, msgs, agent, map[string]string{"tr": "idle"}, chNow)
+	if cards[0].Latest != "Sheet reconciled." {
+		t.Errorf("agent's own words should win over a newer received broadcast, got %q", cards[0].Latest)
+	}
+	if cards[0].Messages != 1 || cards[0].LastActivity != "2026-10-27T13:00:00+05:30" {
+		t.Errorf("message should still count and bump activity: %+v", cards[0])
+	}
+}
+
+func TestOneLine_StripsCodeFences(t *testing.T) {
+	if got := oneLine("```\n🔄 job ALIVE\n```\nAll good"); got != "🔄 job ALIVE All good" {
+		t.Errorf("got %q", got)
+	}
+}

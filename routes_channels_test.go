@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func channelServer(t *testing.T) *httptest.Server {
@@ -20,8 +21,13 @@ func channelServer(t *testing.T) *httptest.Server {
 	os.MkdirAll(filepath.Join(root, "tasks", "a", "updates"), 0o755)
 	os.WriteFile(filepath.Join(root, "tasks", "a", "brief.md"), []byte("# Brief A"), 0o644)
 	os.WriteFile(filepath.Join(root, "tasks", "a", "updates", "n.md"), []byte("# Note one"), 0o644)
+	old := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC) // older than the session's last reply
+	os.Chtimes(filepath.Join(root, "tasks", "a", "updates", "n.md"), old, old)
+	projDir := filepath.Join(root, "claude-projects")
+	os.MkdirAll(filepath.Join(projDir, "-repo"), 0o755)
+	os.WriteFile(filepath.Join(projDir, "-repo", "sid-a.jsonl"), []byte(sampleSession(t)), 0o644)
 	mux := http.NewServeMux()
-	registerChannelRoutes(mux, st, root)
+	registerChannelRoutes(mux, st, root, projDir)
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 	return srv
@@ -54,7 +60,7 @@ func TestRoutes_ChannelListChannelAndThread(t *testing.T) {
 		Channel ChannelSummary `json:"channel"`
 		Cards   []Card         `json:"cards"`
 	}
-	if code := getJSON(t, srv.URL+"/api/channel/fampay", &ch); code != 200 || len(ch.Cards) != 1 || ch.Cards[0].Latest != "Note one" {
+	if code := getJSON(t, srv.URL+"/api/channel/fampay", &ch); code != 200 || len(ch.Cards) != 1 || ch.Cards[0].Latest != "Shipped." {
 		t.Fatalf("channel: %d %+v", code, ch)
 	}
 	if ch.Channel.Name != "Fampay" {
@@ -84,5 +90,33 @@ func TestRoutes_ChannelsAreReadOnly(t *testing.T) {
 		if resp.StatusCode != http.StatusMethodNotAllowed {
 			t.Errorf("POST %s: want 405, got %d", p, resp.StatusCode)
 		}
+	}
+}
+
+func TestRoutes_SessionPages(t *testing.T) {
+	srv := channelServer(t)
+	var pg struct {
+		Items   []sessItem `json:"items"`
+		Start   int64      `json:"start"`
+		Found   bool       `json:"found"`
+		HasMore bool       `json:"has_more"`
+	}
+	if code := getJSON(t, srv.URL+"/api/session/a", &pg); code != 200 || !pg.Found || len(pg.Items) != 5 || pg.Items[4].Body != "Shipped." {
+		t.Fatalf("session: %d %+v", code, pg)
+	}
+	if pg.HasMore || pg.Start != 0 {
+		t.Errorf("whole small file fits one page: %+v", pg)
+	}
+	var fwd struct {
+		Items []sessItem `json:"items"`
+	}
+	if code := getJSON(t, srv.URL+"/api/session/a?from=0", &fwd); code != 200 || len(fwd.Items) != 5 {
+		t.Errorf("from=0: %d %+v", code, fwd)
+	}
+	if code := getJSON(t, srv.URL+"/api/session/a?before=abc", nil); code != 400 {
+		t.Errorf("bad cursor should 400, got %d", code)
+	}
+	if code := getJSON(t, srv.URL+"/api/session/nope", nil); code != 404 {
+		t.Errorf("unknown task should 404, got %d", code)
 	}
 }

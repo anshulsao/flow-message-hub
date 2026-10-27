@@ -2,12 +2,38 @@ package main
 
 import (
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
 
+const sessionPage = 60
+
 // registerChannelRoutes wires the read-only Channels API.
-func registerChannelRoutes(mux *http.ServeMux, st *store, root string) {
+func registerChannelRoutes(mux *http.ServeMux, st *store, root, projectsDir string) {
+	cache := newSessionCache()
+	// agentLast: each task's last agent text from its session transcript,
+	// merged over the newest update note when it is more recent.
+	agentLast := func(tasks []chanTask, notes map[string]note) map[string]note {
+		for _, t := range tasks {
+			if t.SessionID == "" {
+				continue
+			}
+			p := cache.path(projectsDir, t.SessionID)
+			if p == "" {
+				continue
+			}
+			text, at := cache.last(p)
+			ts := parseT(at)
+			if text == "" || ts.IsZero() {
+				continue
+			}
+			if n, ok := notes[t.Slug]; !ok || ts.After(n.Time) {
+				notes[t.Slug] = note{Time: ts, Title: text}
+			}
+		}
+		return notes
+	}
 	get := func(h http.HandlerFunc) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodGet {
@@ -77,8 +103,61 @@ func registerChannelRoutes(mux *http.ServeMux, st *store, root string) {
 		}
 		writeJSON(w, map[string]any{
 			"channel": summary,
-			"cards":   buildCards(mine, msgs, latestNotes(root, slugs), runs, now),
+			"cards":   buildCards(mine, msgs, agentLast(mine, latestNotes(root, slugs)), runs, now),
 		})
+	}))
+
+	mux.HandleFunc("/api/session/", get(func(w http.ResponseWriter, r *http.Request) {
+		slug := strings.TrimPrefix(r.URL.Path, "/api/session/")
+		cursor := func(name string) (int64, bool) {
+			v := r.URL.Query().Get(name)
+			if v == "" {
+				return -1, true
+			}
+			n, err := strconv.ParseInt(v, 10, 64)
+			return n, err == nil && n >= 0
+		}
+		before, ok1 := cursor("before")
+		from, ok2 := cursor("from")
+		if !ok1 || !ok2 {
+			http.Error(w, "bad cursor", http.StatusBadRequest)
+			return
+		}
+		tasks, err := st.chanTasks()
+		if err != nil {
+			httpErr(w, err)
+			return
+		}
+		for _, t := range tasks {
+			if t.Slug != slug {
+				continue
+			}
+			p := ""
+			if t.SessionID != "" {
+				p = cache.path(projectsDir, t.SessionID)
+			}
+			if p == "" {
+				writeJSON(w, map[string]any{"items": []sessItem{}, "start": 0, "found": false, "has_more": false})
+				return
+			}
+			if from >= 0 {
+				items, err := readSessionFrom(p, from)
+				if err != nil {
+					httpErr(w, err)
+					return
+				}
+				writeJSON(w, map[string]any{"items": nonNil(items), "start": from, "found": true, "has_more": from > 0})
+				return
+			}
+			items, start, err := readSessionTail(p, before, sessionPage)
+			if err != nil {
+				httpErr(w, err)
+				return
+			}
+			writeJSON(w, map[string]any{"items": nonNil(items), "start": start, "found": true, "has_more": start > 0})
+			return
+		}
+		http.NotFound(w, r)
 	}))
 
 	mux.HandleFunc("/api/thread/", get(func(w http.ResponseWriter, r *http.Request) {
@@ -98,4 +177,11 @@ func registerChannelRoutes(mux *http.ServeMux, st *store, root string) {
 		}
 		http.NotFound(w, r)
 	}))
+}
+
+func nonNil(items []sessItem) []sessItem {
+	if items == nil {
+		return []sessItem{}
+	}
+	return items
 }

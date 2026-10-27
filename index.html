@@ -152,6 +152,36 @@
   .day{font-size:10.5px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--faint);padding:14px 18px 4px;}
   .readonly{font-size:11.5px;color:var(--faint);text-align:center;padding:14px 18px 30px;font-family:"IBM Plex Mono",monospace;}
 
+
+  /* chat (session transcript) */
+  .chat{padding:4px 0 10px;}
+  .msg{display:grid;grid-template-columns:30px 1fr;gap:10px;padding:7px 18px;}
+  .msg:hover{background:var(--panel-2);}
+  .av{width:28px;height:28px;border-radius:7px;display:grid;place-items:center;font:600 11px "IBM Plex Mono",monospace;}
+  .av.you{background:var(--warn-soft);color:var(--accent);}
+  .av.agent{background:var(--live-soft);color:var(--live);}
+  .msg .hd{display:flex;align-items:baseline;gap:8px;font-size:12.5px;}
+  .msg .hd b{font-weight:600;}
+  .msg .hd .tm{font-family:"IBM Plex Mono",monospace;font-size:10.5px;color:var(--faint);}
+  .msg .tx{font-size:13.5px;margin-top:1px;word-break:break-word;}
+  .msg.you .tx{white-space:pre-wrap;}
+  .msg .tx.md p{margin:3px 0;}
+  .tl{display:flex;align-items:center;gap:8px;padding:2px 18px 2px 58px;font:11px "IBM Plex Mono",monospace;color:var(--faint);}
+  .ms{display:flex;gap:8px;align-items:flex-start;margin:6px 18px 6px 58px;padding:6px 10px;border-radius:8px;border:1px dashed var(--line);font-size:12px;color:var(--muted);}
+  .ms .tm{font:10.5px "IBM Plex Mono",monospace;color:var(--faint);margin-left:auto;white-space:nowrap;padding-left:8px;}
+  .ms details{min-width:0;flex:1;}
+  .ms summary{cursor:pointer;list-style:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .ms summary::-webkit-details-marker{display:none;}
+  .ms details[open] summary{white-space:normal;}
+  .ms .full{white-space:pre-wrap;margin-top:6px;color:var(--ink);font-size:12.5px;}
+  .ms .full.md{white-space:normal;}
+  .earlier{display:block;margin:10px auto;background:var(--panel-2);border:1px solid var(--line);border-radius:999px;padding:3px 14px;font-size:12px;color:var(--muted);cursor:pointer;}
+  .earlier:hover{color:var(--ink);}
+  .jump{position:sticky;bottom:12px;margin-left:auto;margin-right:16px;display:block;background:var(--accent);color:#111;border:0;border-radius:999px;padding:4px 12px;font:600 12px "IBM Plex Sans",sans-serif;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.3);}
+  .thread{overflow-x:hidden;}
+  .msg > div, .ms details{min-width:0;}
+  .msg .tx pre{max-width:100%;overflow-x:auto;}
+  .nosess{margin:10px 18px;padding:10px 12px;border-radius:8px;background:var(--panel-2);color:var(--faint);font:12px "IBM Plex Mono",monospace;}
   @media (max-width:1100px){ .ch{grid-template-columns:220px minmax(0,1fr);} .thread{position:fixed;right:0;top:48px;bottom:0;width:min(460px,100%);box-shadow:-20px 0 40px rgba(0,0,0,.35);z-index:5;} }
   @media (max-width:720px){ .ch{grid-template-columns:1fr;} .side{display:none;} .side.show{display:block;position:fixed;inset:48px 0 0 0;z-index:6;} #menu{display:inline-block!important;} }
 </style>
@@ -196,7 +226,7 @@
   const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 
   // ---------- state (selection lives in the URL hash) ----------
-  const st = { channels: [], live: [], cards: [], channel: null, thread: null, filter: "all", showEarlier: false, briefOpen: false, lastOk: 0, seen: {} };
+  const st = { channels: [], live: [], cards: [], channel: null, thread: null, sess: null, filter: "all", showEarlier: false, briefOpen: false, lastOk: 0, seen: {} };
   try { st.seen = JSON.parse(localStorage.getItem("flowhub-seen") || "{}"); } catch(e) {}
   function readHash(){ const p = new URLSearchParams(location.hash.slice(1)); return { c: p.get("c"), t: p.get("t"), v: p.get("v") }; }
   function writeHash(h){ const p = new URLSearchParams(); if (h.v && h.v!=="channels") p.set("v", h.v); if (h.c) p.set("c", h.c); if (h.t) p.set("t", h.t); history.replaceState(null, "", "#" + p.toString()); }
@@ -282,11 +312,34 @@
     if (fromClick) { st.filter = "all"; st.showEarlier = false; $("#mid").scrollTop = 0; }
     renderMid();
   }
+  // thread = milestones (/api/thread) + session chat (/api/session).
+  // sess: { older:[], latest:[], liveFrom, oldest, hasMore, found }
   async function loadThread(slug, fromClick){
-    try { st.thread = await getJSON("/api/thread/" + encodeURIComponent(slug)); }
-    catch (e) { st.thread = null; sel.t = null; writeHash(sel); $("#thread").hidden = true; return; }
-    if (fromClick) { st.briefOpen = false; $("#thread").scrollTop = 0; }
+    const el = $("#thread");
+    const fresh = fromClick || !st.sess || st.sess.slug !== slug;
+    const atBottom = !fresh && el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    try {
+      const th = await getJSON("/api/thread/" + encodeURIComponent(slug));
+      if (fresh) {
+        const pg = await getJSON("/api/session/" + encodeURIComponent(slug));
+        st.sess = { slug, older: [], latest: pg.items, liveFrom: pg.start, oldest: pg.start, hasMore: pg.has_more, found: pg.found };
+      } else if (st.sess.found) {
+        const pg = await getJSON("/api/session/" + encodeURIComponent(slug) + "?from=" + st.sess.liveFrom);
+        st.sess.latest = pg.items;
+      }
+      st.thread = th;
+    } catch (e) { st.thread = null; st.sess = null; sel.t = null; writeHash(sel); el.hidden = true; return; }
+    if (fromClick) st.briefOpen = false;
     renderThread();
+    if (fresh || atBottom) el.scrollTop = el.scrollHeight;
+  }
+  async function loadEarlier(){
+    const s = st.sess, el = $("#thread"); if (!s || !s.hasMore) return;
+    const pg = await getJSON("/api/session/" + encodeURIComponent(s.slug) + "?before=" + s.oldest);
+    const h = el.scrollHeight, top = el.scrollTop;
+    s.older = pg.items.concat(s.older); s.oldest = pg.start; s.hasMore = pg.has_more;
+    renderThread();
+    el.scrollTop = top + (el.scrollHeight - h);
   }
 
   // ---------- render: sidebar ----------
@@ -361,41 +414,46 @@
   }
 
   // ---------- render: thread ----------
-  function evHTML(e){
-    const t = `<div class="t">${hhmm(e.time)}</div>`;
-    let k = "", b = "";
+  const firstLine = t => (t || "").split("\n").find(l => l.trim()) || "";
+  function milestoneHTML(e){
+    const tm = `<span class="tm">${hhmm(e.time)}</span>`;
     switch (e.kind) {
-      case "created": k = `<span class="tagk note">task</span> created`; break;
-      case "auto_start": k = `<span class="tagk auto">auto</span> run started`; break;
-      case "auto_end": k = `<span class="tagk auto">auto</span> run ${esc(e.body)}`; break;
-      case "note":
-        k = `<span class="tagk note">note</span>`;
-        b = `<details><summary>${esc(e.title)}</summary><div class="md">${md(e.body)}</div></details>`; break;
+      case "created": return `<div class="ms"><span class="tagk note">task</span><span>created</span>${tm}</div>`;
+      case "auto_start": return `<div class="ms"><span class="tagk auto">auto</span><span>run started</span>${tm}</div>`;
+      case "auto_end": return `<div class="ms"><span class="tagk auto">auto</span><span>run ${esc(e.body)}</span>${tm}</div>`;
+      case "note": return `<div class="ms"><span class="tagk note">note</span><details><summary>${esc(e.title)}</summary><div class="full md">${md(e.body)}</div></details>${tm}</div>`;
       default: {
-        const kind = e.kind === "broadcast" ? "broadcast" : "message";
-        k = `<span class="tagk ${kind}">${kind === "broadcast" ? "broadcast" : "msg"}</span>${e.urgent ? `<span class="tagk urgent">urgent</span>` : ""}
-             <span class="who">${esc(e.from || "?")}</span> → <span class="who">${esc(e.to || "?")}</span>`;
-        b = `<div class="body ${e.to==="you"?"you":""}">${esc(e.body)}</div>`;
+        const bc = e.kind === "broadcast";
+        return `<div class="ms"><span class="tagk ${bc ? "broadcast" : "message"}">${bc ? "bcast" : "msg"}</span>${e.urgent ? `<span class="tagk urgent">urgent</span>` : ""}
+          <details><summary><span class="who">${esc(e.from || "?")} → ${esc(e.to || "?")}</span> · ${esc(firstLine(e.body))}</summary><div class="full">${esc(e.body)}</div></details>${tm}</div>`;
       }
     }
-    return `<div class="ev">${t}<div><div class="k">${k}</div>${b}</div></div>`;
+  }
+  function chatHTML(it, slug){
+    if (it.kind === "tools") return `<div class="tl">▸ ran ${it.tools} tool${it.tools > 1 ? "s" : ""} · ${esc(it.tool_names)}</div>`;
+    const you = it.kind === "you";
+    return `<div class="msg ${it.kind}"><div class="av ${it.kind}">${you ? "you" : "AI"}</div><div>
+      <div class="hd"><b>${you ? "you" : esc(slug)}</b><span class="tm">${hhmm(it.time)}</span></div>
+      <div class="tx ${you ? "" : "md"}">${you ? esc(it.body) : md(it.body)}</div></div></div>`;
   }
   function renderThread(){
     const th = st.thread, el = $("#thread"); if (!th) { el.hidden = true; return; }
     el.hidden = false;
-    const s = stateOf(th);
+    const s = stateOf(th), sess = st.sess || { older: [], latest: [], found: false };
     const facts = [
       th.project ? `#${th.project}` : "no project",
       th.priority ? `${th.priority} priority` : "",
       th.auto ? `auto ${th.auto_status || ""}${th.auto_started ? " · " + dur(th.auto_started, th.auto_finished) : ""}` : "",
       th.waiting_on ? `waiting on: ${th.waiting_on}` : "",
-      `${th.messages} msgs`,
+      th.messages ? `${th.messages} bus msgs` : "",
     ].filter(Boolean);
-    let lastDay = "", evs = "";
-    for (const e of [...(th.events || [])].reverse()) {
-      const d = dayLabel(e.time); if (d !== lastDay) { evs += `<div class="day">${d}</div>`; lastDay = d; }
-      evs += evHTML(e);
-    }
+    const chat = sess.older.concat(sess.latest).map(it => ({ t: new Date(it.time).getTime(), html: () => chatHTML(it, th.slug), time: it.time }));
+    const floor = sess.found && sess.hasMore && chat.length ? chat[0].t : -Infinity;
+    const ms = (th.events || []).filter(e => new Date(e.time).getTime() >= floor)
+      .map(e => ({ t: new Date(e.time).getTime(), html: () => milestoneHTML(e), time: e.time }));
+    const all = chat.concat(ms).sort((a, b) => a.t - b.t);
+    let lastDay = "", body = "";
+    for (const x of all) { const d = dayLabel(x.time); if (d !== lastDay) { body += `<div class="day">${d}</div>`; lastDay = d; } body += x.html(); }
     const longBrief = (th.brief || "").split("\n").length > 12;
     el.innerHTML = `
       <div class="th-h">
@@ -405,8 +463,14 @@
       </div>
       ${th.brief ? `<div class="brief ${longBrief && !st.briefOpen ? "clip" : ""}"><div class="lbl">Brief</div><div class="md">${md(th.brief)}</div>
         ${longBrief ? `<button class="tog" id="brieftog">${st.briefOpen ? "show less" : "show full brief"}</button>` : ""}</div>` : ""}
-      ${evs || `<div class="placeholder">no activity yet</div>`}
-      <div class="readonly">newest first · read-only view</div>`;
+      ${sess.found ? (sess.hasMore ? `<button class="earlier" id="earlier">↑ load earlier</button>` : "") : `<div class="nosess">no session transcript for this task${th.status === "backlog" ? " (not started)" : ""}</div>`}
+      <div class="chat">${body || `<div class="placeholder">no activity yet</div>`}</div>
+      <button class="jump" id="jump" hidden>↓ latest</button>`;
+    updateJump();
+  }
+  function updateJump(){
+    const el = $("#thread"), j = $("#jump"); if (!j) return;
+    j.hidden = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
   }
 
   // ---------- events ----------
@@ -425,9 +489,12 @@
     sel.t = c.dataset.t; writeHash(sel); renderMid(); renderSide(); loadThread(sel.t, true);
   });
   $("#thread").addEventListener("click", e => {
-    if (e.target.closest("#closeth")) { sel.t = null; st.thread = null; writeHash(sel); $("#thread").hidden = true; renderMid(); renderSide(); }
-    if (e.target.closest("#brieftog")) { st.briefOpen = !st.briefOpen; renderThread(); }
+    if (e.target.closest("#closeth")) { sel.t = null; st.thread = null; st.sess = null; writeHash(sel); $("#thread").hidden = true; renderMid(); renderSide(); }
+    if (e.target.closest("#brieftog")) { const el = $("#thread"), top = el.scrollTop; st.briefOpen = !st.briefOpen; renderThread(); el.scrollTop = top; }
+    if (e.target.closest("#earlier")) loadEarlier();
+    if (e.target.closest("#jump")) { const el = $("#thread"); el.scrollTop = el.scrollHeight; }
   });
+  $("#thread").addEventListener("scroll", updateJump);
   $("#find").addEventListener("input", renderSide);
   $("#menu").addEventListener("click", () => $("#side").classList.toggle("show"));
   document.addEventListener("keydown", e => { if (e.key === "Escape" && sel.t) $("#closeth")?.click(); });
