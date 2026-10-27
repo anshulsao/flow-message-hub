@@ -128,10 +128,11 @@ func classify(t chanTask, run string, last, now time.Time) (section, reason stri
 	switch {
 	case run == "live":
 		return "active", ""
+	case t.WaitingOn != "":
+		// an auto that stopped to ask a question isn't a crash
+		return "attention", "waiting on " + t.WaitingOn
 	case run == "crashed":
 		return "attention", "auto died"
-	case t.WaitingOn != "":
-		return "attention", "waiting on " + t.WaitingOn
 	case !last.IsZero() && now.Sub(last) > staleAfter:
 		return "attention", fmt.Sprintf("stale %dd", int(now.Sub(last).Hours()/24))
 	}

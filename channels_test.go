@@ -29,6 +29,8 @@ func TestClassify_Sections(t *testing.T) {
 		{"live auto is active", chanTask{Status: "in-progress", AutoRunStatus: "running"}, "live", "2026-10-27T13:20:00+05:30", "active", nil},
 		{"crashed auto needs attention", chanTask{Status: "in-progress", AutoRunStatus: "dead"}, "crashed", "2026-10-15T16:16:00+05:30", "attention",
 			func(r string) bool { return r == "auto died" }},
+		{"ended auto that is waiting shows waiting, not died", chanTask{Status: "in-progress", AutoRunStatus: "dead", WaitingOn: "Anshul decision"}, "crashed", "2026-10-27T13:20:00+05:30", "attention",
+			func(r string) bool { return r == "waiting on Anshul decision" }},
 		{"waiting needs attention", chanTask{Status: "in-progress", WaitingOn: "Anuj sign-off"}, "idle", "2026-10-26T10:00:00+05:30", "attention",
 			func(r string) bool { return r == "waiting on Anuj sign-off" }},
 		{"stale idle needs attention", chanTask{Status: "in-progress"}, "idle", "2026-10-13T13:30:00+05:30", "attention",

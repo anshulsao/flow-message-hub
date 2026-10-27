@@ -334,8 +334,8 @@
     if (c.status === "done") return { dot:"done", pill:"done", label: c.auto ? "done · auto " + dur(c.auto_started, c.auto_finished) : "done" };
     if (c.status === "backlog") return { dot:"backlog", pill:"backlog", label:"backlog" };
     if (c.run_state === "live") return { dot:"live", pill:"live", label: c.auto ? "auto running " + dur(c.auto_started) : "session live" };
+    if (c.waiting_on) return { dot:"att", pill:"att", label: c.run_state === "crashed" ? "auto stopped · waiting" : "waiting" };
     if (c.run_state === "crashed") return { dot:"crashed", pill:"crashed", label:"auto died" };
-    if (c.waiting_on) return { dot:"att", pill:"att", label:"waiting" };
     if (c.section === "attention") return { dot:"att", pill:"att", label: c.reason || "stale" };
     return { dot:"idle", pill:"idle", label:"idle" };
   }
