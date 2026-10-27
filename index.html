@@ -548,6 +548,17 @@
       ta.value = st.drafts[th.slug] || ""; st.cmpSlug = th.slug; autoGrow();
     }
     const p = st.prompt || { ok: false, reason: "checking…" };
+    // a stopped auto: the box resumes it headless (answer optional)
+    st.cmpMode = (!p.ok && th.auto && th.run_state !== "live") ? "auto" : "prompt";
+    if (st.cmpMode === "auto") {
+      ta.disabled = st.sending; btn.disabled = st.sending; btn.textContent = "▶";
+      ta.placeholder = `Answer for ${th.slug} (optional) · resumes the auto headless`;
+      if (hint.dataset.sticky && hint.dataset.slug === th.slug && Date.now() < +hint.dataset.until) return;
+      hint.dataset.sticky = ""; hint.className = "cmp-hint busy";
+      hint.innerHTML = `auto stopped · Enter resumes it with your answer · or <button class="cmp-open" id="cmpopen">Open in iTerm</button>`;
+      return;
+    }
+    btn.textContent = "↑";
     ta.disabled = !p.ok || st.sending; btn.disabled = !p.ok || st.sending || !ta.value.trim();
     ta.placeholder = p.ok ? `Message ${th.slug}` : "can't send to this session";
     if (hint.dataset.sticky && hint.dataset.slug === th.slug && Date.now() < +hint.dataset.until) return;
@@ -565,7 +576,24 @@
     hint.dataset.sticky = "1"; hint.dataset.slug = st.cmpSlug || ""; hint.dataset.until = String(Date.now() + 6000);
   }
   function autoGrow(){ const ta = $("#cmptext"); ta.style.height = "auto"; ta.style.height = Math.min(ta.scrollHeight, 180) + "px"; }
+  async function resumeAutoRun(){
+    const th = st.thread, ta = $("#cmptext"); if (!th || st.sending) return;
+    st.sending = true; renderComposer();
+    try {
+      const r = await fetch("/api/resume-auto/" + encodeURIComponent(th.slug), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: ta.value }) });
+      const d = await r.json().catch(() => ({ message: "HTTP " + r.status }));
+      if (r.ok) {
+        const text = ta.value.trim();
+        ta.value = ""; st.drafts[th.slug] = ""; autoGrow();
+        if (text) st.pending = { slug: th.slug, text, at: Date.now() };
+        flashHint("✓ auto resumed headless · its replies appear here as it works", "ok");
+        setTimeout(() => { if (sel.t === th.slug) refresh(); }, 2500);
+      } else flashHint(d.message || ("HTTP " + r.status), "err");
+    } catch (e) { flashHint("failed: " + e.message, "err"); }
+    st.sending = false; renderComposer();
+  }
   async function sendPrompt(){
+    if (st.cmpMode === "auto") return resumeAutoRun();
     const th = st.thread, ta = $("#cmptext"); if (!th || st.sending) return;
     const text = ta.value.trim(); if (!text) return;
     st.sending = true; renderComposer();
@@ -655,7 +683,7 @@
   $("#thread").addEventListener("scroll", updateJump);
   $("#thread").addEventListener("change", e => { if (e.target.id === "projsel" && st.thread) setProject(st.thread.slug, e.target.value); });
   $("#thread").addEventListener("focusin", e => { if (e.target.id === "projsel") loadProjects(); });
-  $("#cmptext").addEventListener("input", () => { autoGrow(); if (st.cmpSlug) st.drafts[st.cmpSlug] = $("#cmptext").value; $("#cmpsend").disabled = !(st.prompt && st.prompt.ok) || st.sending || !$("#cmptext").value.trim(); });
+  $("#cmptext").addEventListener("input", () => { autoGrow(); if (st.cmpSlug) st.drafts[st.cmpSlug] = $("#cmptext").value; $("#cmpsend").disabled = st.cmpMode === "auto" ? st.sending : (!(st.prompt && st.prompt.ok) || st.sending || !$("#cmptext").value.trim()); });
   $("#cmptext").addEventListener("keydown", e => {
     if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); sendPrompt(); }
     if (e.key === "Escape") { e.stopPropagation(); e.target.blur(); }
