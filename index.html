@@ -214,6 +214,7 @@
   .cmp-hint.err{color:var(--bad);}
   .cmp-hint.ok{color:var(--done);}
   .cmp-hint.busy{color:var(--warn);}
+  .cmp-open{margin-left:8px;background:var(--accent);color:#111;border:0;border-radius:6px;padding:2px 10px;font:600 11.5px "IBM Plex Sans",sans-serif;cursor:pointer;}
   .msg.pending{opacity:.55;}
   .msg.pending .tm:after{content:" · sending…";}
   .jump{bottom:12px;}
@@ -539,7 +540,11 @@
     ta.placeholder = p.ok ? `Message ${th.slug}` : "can't send to this session";
     if (hint.dataset.sticky && hint.dataset.slug === th.slug && Date.now() < +hint.dataset.until) return;
     hint.dataset.sticky = "";
-    if (!p.ok) { hint.className = "cmp-hint err"; hint.textContent = p.reason; }
+    if (!p.ok) {
+      const canOpen = th.run_state !== "live" && /isn't open|headless auto run/.test(p.reason || "");
+      hint.className = "cmp-hint err";
+      hint.innerHTML = esc(p.reason) + (canOpen ? ` <button class="cmp-open" id="cmpopen">Open in iTerm</button>` : "");
+    }
     else if (p.status === "busy") { hint.className = "cmp-hint busy"; hint.textContent = "session is mid-turn · your message will queue · Enter to send, Shift+Enter for new line"; }
     else { hint.className = "cmp-hint"; hint.textContent = "types into its iTerm tab · Enter to send, Shift+Enter for new line"; }
   }
@@ -619,6 +624,22 @@
     if (e.key === "Escape") { e.stopPropagation(); e.target.blur(); }
   });
   $("#cmpsend").addEventListener("click", sendPrompt);
+  $("#composer").addEventListener("click", e => { if (e.target.closest("#cmpopen")) openInTerminal(); });
+  async function openInTerminal(){
+    const th = st.thread; if (!th) return;
+    flashHint("opening in iTerm…", "busy");
+    try {
+      const r = await fetch("/api/open/" + encodeURIComponent(th.slug), { method: "POST" });
+      const d = await r.json().catch(() => ({ message: "HTTP " + r.status }));
+      if (!r.ok) { flashHint(d.message || ("HTTP " + r.status), "err"); return; }
+      flashHint("opened · the box turns on once the session has started", "ok");
+      for (let i = 0; i < 15 && sel.t === th.slug; i++) {   // poll until Claude lists it
+        await new Promise(res => setTimeout(res, 2000));
+        await loadThread(th.slug, false);
+        if (st.prompt && st.prompt.ok) { $("#cmphint").dataset.sticky = ""; renderComposer(); $("#cmptext").focus(); return; }
+      }
+    } catch (e) { flashHint("failed: " + e.message, "err"); }
+  }
   $("#find").addEventListener("input", renderSide);
   $("#menu").addEventListener("click", () => $("#side").classList.toggle("show"));
   document.addEventListener("keydown", e => { if (e.key !== "Escape" || !sel.t || e.target.tagName === "TEXTAREA" || e.target.tagName === "INPUT") return; if (sel.x) setExpanded(false); else $("#closeth")?.click(); });
