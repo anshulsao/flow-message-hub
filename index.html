@@ -402,6 +402,12 @@
     if (fromClick) st.briefOpen = false;
     renderThread();
     if (fresh || atBottom) el.scrollTop = el.scrollHeight;
+    if (fromClick) focusComposer();
+  }
+  // put the cursor in the message box (only on deliberate actions, never on polls)
+  function focusComposer(){
+    const ta = $("#cmptext");
+    if (!$("#composer").hidden && !ta.disabled) { ta.focus({ preventScroll: true }); ta.setSelectionRange(ta.value.length, ta.value.length); }
   }
   async function loadEarlier(){
     const s = st.sess, el = $("#thread"); if (!s || !s.hasMore) return;
@@ -637,7 +643,7 @@
         setTimeout(() => { if (sel.t === th.slug) refresh(); }, 2500);
       } else flashHint(d.message || ("HTTP " + r.status), "err");
     } catch (e) { flashHint("failed: " + e.message, "err"); }
-    st.sending = false; renderComposer();
+    st.sending = false; renderComposer(); focusComposer();
   }
   async function sendPrompt(){
     if (st.cmpMode === "auto") return resumeAutoRun();
@@ -651,11 +657,12 @@
         ta.value = ""; st.drafts[th.slug] = ""; autoGrow();
         st.pending = { slug: th.slug, text, at: Date.now() };
         flashHint("✓ " + (d.message || "sent"), "ok");
+        setTimeout(focusComposer, 0);
         renderThread(); const el = $("#thread"); el.scrollTop = el.scrollHeight;
         setTimeout(() => { if (sel.t === th.slug) loadThread(th.slug, false); }, 2000);
       } else flashHint(d.message || ("HTTP " + r.status), "err");
     } catch (e) { flashHint("failed: " + e.message, "err"); }
-    st.sending = false; renderComposer();
+    st.sending = false; renderComposer(); focusComposer();
   }
   function projectSelectHTML(th){
     const ps = [...(st.projects || [])].sort((a, b) => a.name.localeCompare(b.name));
@@ -776,6 +783,7 @@
     document.querySelector(".ch").classList.toggle("expanded", sel.x);
     const el = $("#thread"), atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
     renderThread(); if (atBottom) el.scrollTop = el.scrollHeight;
+    focusComposer();
   }
 
   // ---------- tabs ----------
