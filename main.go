@@ -269,6 +269,8 @@ func main() {
 	home, _ := os.UserHomeDir()
 	registerChannelRoutes(mux, st, filepath.Dir(*dbPath), filepath.Join(home, ".claude", "projects"))
 	registerStatusRoute(mux, st, fx)
+	lister := &agentsLister{}
+	registerPromptRoute(mux, st, promptDeps_{agents: lister.list, tty: ttyOfClaude, sender: itermSender{}})
 
 	page := func(body []byte) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
@@ -287,7 +289,7 @@ func main() {
 	})
 
 	log.Printf("flow message hub -> http://%s", *addr)
-	if err := http.ListenAndServe(*addr, mux); err != nil {
+	if err := http.ListenAndServe(*addr, guardWrites(mux)); err != nil {
 		log.Fatal(err)
 	}
 }

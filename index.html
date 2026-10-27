@@ -203,6 +203,21 @@
   .ch.expanded .thread{position:static;width:auto;box-shadow:none;border-left:0;}
   .ch.expanded .th-h > *,.ch.expanded .brief,.ch.expanded .chat,.ch.expanded .nosess,.ch.expanded .day{max-width:980px;margin-left:auto;margin-right:auto;}
   .ch.expanded .brief{margin-top:14px;}
+  .composer{position:sticky;bottom:0;z-index:3;background:var(--panel);border-top:1px solid var(--line);padding:10px 14px 8px;}
+  .cmp-row{display:flex;gap:8px;align-items:flex-end;}
+  .composer textarea{flex:1;resize:none;max-height:180px;min-height:38px;border-radius:9px;border:1px solid var(--line);background:var(--panel-2);color:var(--ink);padding:9px 11px;font:13.5px/1.4 "IBM Plex Sans",sans-serif;outline:none;}
+  .composer textarea:focus{border-color:var(--accent);}
+  .composer textarea:disabled{opacity:.55;cursor:not-allowed;}
+  .cmp-send{width:38px;height:38px;border-radius:9px;border:0;background:var(--accent);color:#111;font-weight:700;font-size:16px;cursor:pointer;flex:none;}
+  .cmp-send:disabled{opacity:.35;cursor:not-allowed;}
+  .cmp-hint{font:11px "IBM Plex Mono",monospace;color:var(--faint);margin-top:5px;min-height:14px;}
+  .cmp-hint.err{color:var(--bad);}
+  .cmp-hint.ok{color:var(--done);}
+  .cmp-hint.busy{color:var(--warn);}
+  .msg.pending{opacity:.55;}
+  .msg.pending .tm:after{content:" · sending…";}
+  .jump{bottom:12px;}
+  .ch.expanded .composer > *{max-width:980px;margin-left:auto;margin-right:auto;}
   .nosess{margin:10px 18px;padding:10px 12px;border-radius:8px;background:var(--panel-2);color:var(--faint);font:12px "IBM Plex Mono",monospace;}
   @media (max-width:1100px){ .ch{grid-template-columns:220px minmax(0,1fr);} .thread{position:fixed;right:0;top:48px;bottom:0;width:min(460px,100%);box-shadow:-20px 0 40px rgba(0,0,0,.35);z-index:5;} }
   @media (max-width:720px){ .ch{grid-template-columns:1fr;} .side{display:none;} .side.show{display:block;position:fixed;inset:48px 0 0 0;z-index:6;} #menu{display:inline-block!important;} }
@@ -235,7 +250,16 @@
       <main class="pane mid" id="mid">
         <div class="placeholder">pick a channel</div>
       </main>
-      <section class="pane thread" id="thread" hidden></section>
+      <section class="pane thread" id="thread" hidden>
+        <div id="thbody"></div>
+        <div class="composer" id="composer" hidden>
+          <div class="cmp-row">
+            <textarea id="cmptext" rows="1" spellcheck="true"></textarea>
+            <button class="cmp-send" id="cmpsend" title="Send (Enter)">↑</button>
+          </div>
+          <div class="cmp-hint" id="cmphint"></div>
+        </div>
+      </section>
     </div>
   </div>
   <div class="view" id="graphview" hidden></div>
@@ -248,7 +272,7 @@
   const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 
   // ---------- state (selection lives in the URL hash) ----------
-  const st = { channels: [], live: [], cards: [], channel: null, thread: null, sess: null, filter: "all", showEarlier: false, briefOpen: false, lastOk: 0, seen: {}, showDone: false, statusMsg: null, busy: false };
+  const st = { channels: [], live: [], cards: [], channel: null, thread: null, sess: null, filter: "all", showEarlier: false, briefOpen: false, lastOk: 0, seen: {}, showDone: false, statusMsg: null, busy: false, prompt: null, drafts: {}, pending: null, cmpSlug: null, sending: false };
   try { st.showDone = localStorage.getItem("flowhub-showdone") === "1"; } catch(e) {}
   try { st.seen = JSON.parse(localStorage.getItem("flowhub-seen") || "{}"); } catch(e) {}
   function readHash(){ const p = new URLSearchParams(location.hash.slice(1)); return { c: p.get("c"), t: p.get("t"), v: p.get("v"), x: p.get("x") === "1" }; }
@@ -351,6 +375,9 @@
         st.sess.latest = pg.items;
       }
       st.thread = th;
+      st.prompt = th.status === "in-progress"
+        ? await getJSON("/api/prompt/" + encodeURIComponent(slug)).catch(() => ({ ok: false, reason: "can't check the session" }))
+        : null;
     } catch (e) { st.thread = null; st.sess = null; sel.t = null; writeHash(sel); el.hidden = true; return; }
     if (fromClick) st.briefOpen = false;
     renderThread();
@@ -476,7 +503,7 @@
     let lastDay = "", body = "";
     for (const x of all) { const d = dayLabel(x.time); if (d !== lastDay) { body += `<div class="day">${d}</div>`; lastDay = d; } body += x.html(); }
     const longBrief = (th.brief || "").split("\n").length > 12;
-    el.innerHTML = `
+    $("#thbody").innerHTML = `
       <div class="th-h">
         <div class="slug"><span class="dot ${s.dot}"></span>${esc(th.slug)}<span class="pill ${s.pill}">${esc(s.label)}</span><span class="acts"><button class="ibtn" id="expandth" title="${sel.x ? "Collapse (Esc)" : "Expand to full pane"}">${sel.x ? "⤡" : "⤢"}</button><button class="ibtn" id="closeth" title="Close">✕</button></span></div>
         ${th.name ? `<div class="name">${esc(th.name)}</div>` : ""}
@@ -487,9 +514,56 @@
       ${th.brief ? `<div class="brief ${longBrief && !st.briefOpen ? "clip" : ""}"><div class="lbl">Brief</div><div class="md">${md(th.brief)}</div>
         ${longBrief ? `<button class="tog" id="brieftog">${st.briefOpen ? "show less" : "show full brief"}</button>` : ""}</div>` : ""}
       ${sess.found ? (sess.hasMore ? `<button class="earlier" id="earlier">↑ load earlier</button>` : "") : `<div class="nosess">no session transcript for this task${th.status === "backlog" ? " (not started)" : ""}</div>`}
-      <div class="chat">${body || `<div class="placeholder">no activity yet</div>`}</div>
+      <div class="chat">${body || `<div class="placeholder">no activity yet</div>`}${pendingHTML(th.slug, sess)}</div>
       <button class="jump" id="jump" hidden>↓ latest</button>`;
     updateJump();
+    renderComposer();
+  }
+  // optimistic "you" bubble until the prompt shows up in the transcript
+  function pendingHTML(slug, sess){
+    const p = st.pending; if (!p || p.slug !== slug) return "";
+    const seen = sess.latest.some(it => it.kind === "you" && it.body === p.text && new Date(it.time).getTime() >= p.at - 5000);
+    if (seen || Date.now() - p.at > 90000) { st.pending = null; return ""; }
+    return `<div class="msg you pending"><div class="av you">you</div><div><div class="hd"><b>you</b><span class="tm">${hhmm(new Date(p.at).toISOString())}</span></div><div class="tx">${esc(p.text)}</div></div></div>`;
+  }
+  function renderComposer(){
+    const th = st.thread, box = $("#composer"), ta = $("#cmptext"), hint = $("#cmphint"), btn = $("#cmpsend");
+    if (!th || th.status !== "in-progress") { box.hidden = true; return; }
+    box.hidden = false;
+    if (st.cmpSlug !== th.slug) {   // switching threads: swap drafts
+      if (st.cmpSlug) st.drafts[st.cmpSlug] = ta.value;
+      ta.value = st.drafts[th.slug] || ""; st.cmpSlug = th.slug; autoGrow();
+    }
+    const p = st.prompt || { ok: false, reason: "checking…" };
+    ta.disabled = !p.ok || st.sending; btn.disabled = !p.ok || st.sending || !ta.value.trim();
+    ta.placeholder = p.ok ? `Message ${th.slug}` : "can't send to this session";
+    if (hint.dataset.sticky && hint.dataset.slug === th.slug && Date.now() < +hint.dataset.until) return;
+    hint.dataset.sticky = "";
+    if (!p.ok) { hint.className = "cmp-hint err"; hint.textContent = p.reason; }
+    else if (p.status === "busy") { hint.className = "cmp-hint busy"; hint.textContent = "session is mid-turn · your message will queue · Enter to send, Shift+Enter for new line"; }
+    else { hint.className = "cmp-hint"; hint.textContent = "types into its iTerm tab · Enter to send, Shift+Enter for new line"; }
+  }
+  function flashHint(text, kind){
+    const hint = $("#cmphint"); hint.className = "cmp-hint " + kind; hint.textContent = text;
+    hint.dataset.sticky = "1"; hint.dataset.slug = st.cmpSlug || ""; hint.dataset.until = String(Date.now() + 6000);
+  }
+  function autoGrow(){ const ta = $("#cmptext"); ta.style.height = "auto"; ta.style.height = Math.min(ta.scrollHeight, 180) + "px"; }
+  async function sendPrompt(){
+    const th = st.thread, ta = $("#cmptext"); if (!th || st.sending) return;
+    const text = ta.value.trim(); if (!text) return;
+    st.sending = true; renderComposer();
+    try {
+      const r = await fetch("/api/prompt/" + encodeURIComponent(th.slug), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) });
+      const d = await r.json().catch(() => ({ message: "HTTP " + r.status }));
+      if (r.ok) {
+        ta.value = ""; st.drafts[th.slug] = ""; autoGrow();
+        st.pending = { slug: th.slug, text, at: Date.now() };
+        flashHint("✓ " + (d.message || "sent"), "ok");
+        renderThread(); const el = $("#thread"); el.scrollTop = el.scrollHeight;
+        setTimeout(() => { if (sel.t === th.slug) loadThread(th.slug, false); }, 2000);
+      } else flashHint(d.message || ("HTTP " + r.status), "err");
+    } catch (e) { flashHint("failed: " + e.message, "err"); }
+    st.sending = false; renderComposer();
   }
   function statusMsgHTML(slug){
     const m = st.statusMsg; if (!m || m.slug !== slug) return "";
@@ -530,7 +604,7 @@
   });
   $("#thread").addEventListener("click", e => {
     if (e.target.closest("#expandth")) { setExpanded(!sel.x); return; }
-    if (e.target.closest("#closeth")) { setExpanded(false); sel.t = null; st.thread = null; st.sess = null; writeHash(sel); $("#thread").hidden = true; renderMid(); renderSide(); }
+    if (e.target.closest("#closeth")) { setExpanded(false); sel.t = null; st.thread = null; st.sess = null; writeHash(sel); $("#thread").hidden = true; $("#composer").hidden = true; renderMid(); renderSide(); }
     if (e.target.closest("#brieftog")) { const el = $("#thread"), top = el.scrollTop; st.briefOpen = !st.briefOpen; renderThread(); el.scrollTop = top; }
     if (e.target.closest("#earlier")) loadEarlier();
     const sb = e.target.closest("[data-status]");
@@ -539,9 +613,15 @@
     if (e.target.closest("#jump")) { const el = $("#thread"); el.scrollTop = el.scrollHeight; }
   });
   $("#thread").addEventListener("scroll", updateJump);
+  $("#cmptext").addEventListener("input", () => { autoGrow(); if (st.cmpSlug) st.drafts[st.cmpSlug] = $("#cmptext").value; $("#cmpsend").disabled = !(st.prompt && st.prompt.ok) || st.sending || !$("#cmptext").value.trim(); });
+  $("#cmptext").addEventListener("keydown", e => {
+    if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); sendPrompt(); }
+    if (e.key === "Escape") { e.stopPropagation(); e.target.blur(); }
+  });
+  $("#cmpsend").addEventListener("click", sendPrompt);
   $("#find").addEventListener("input", renderSide);
   $("#menu").addEventListener("click", () => $("#side").classList.toggle("show"));
-  document.addEventListener("keydown", e => { if (e.key !== "Escape" || !sel.t) return; if (sel.x) setExpanded(false); else $("#closeth")?.click(); });
+  document.addEventListener("keydown", e => { if (e.key !== "Escape" || !sel.t || e.target.tagName === "TEXTAREA" || e.target.tagName === "INPUT") return; if (sel.x) setExpanded(false); else $("#closeth")?.click(); });
   function setExpanded(on){
     sel.x = !!on && !!sel.t; writeHash(sel);
     document.querySelector(".ch").classList.toggle("expanded", sel.x);
