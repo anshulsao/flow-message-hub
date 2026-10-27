@@ -456,7 +456,7 @@
         const sessions = act.filter(c => live(c) && c.auto_status !== "running");
         const idle = act.filter(c => !live(c));
         const sub = (title, cards) => cards.length ? `<div class="sub-h">${title}<span class="n">${cards.length}</span></div>` + cards.map(cardHTML).join("") : "";
-        if (act.length) body += `<div class="grp-h">Active</div>` + sub("⚙ Auto runs", autos) + sub("● Live sessions", sessions) + sub("○ Idle", idle);
+        if (act.length) body += `<div class="grp-h">Active</div>` + sub("● Live sessions", sessions) + sub("⚙ Auto runs", autos) + sub("○ Idle", idle);
       }
       if (f === "all" || f === "attention") body += group("Needs attention", by("attention"));
       if (f === "all" || f === "backlog") body += group("Backlog", by("backlog"));
