@@ -401,33 +401,29 @@
   }
   function renderMid(){
     const ch = st.channel; if (!ch) return;
-    if (!st.showDone && st.filter === "done") st.filter = "all";
+    // Two views: open work (filter chips) or, with the toggle on, done only.
+    if (st.filter === "done") st.filter = "all";
     const by = k => st.cards.filter(c => c.section === k);
-    const counts = { all: st.cards.length, active: by("active").length, attention: by("attention").length, backlog: by("backlog").length, done: by("done").length };
+    const counts = { all: st.cards.length - by("done").length, active: by("active").length, attention: by("attention").length, backlog: by("backlog").length };
     let body = "";
     const group = (title, cards) => cards.length ? `<div class="grp-h">${title}</div>` + cards.map(cardHTML).join("") : "";
     const f = st.filter;
-    if (f === "all" || f === "active") body += group("Active", by("active"));
-    if (f === "all" || f === "attention") body += group("Needs attention", by("attention"));
-    if (f === "all" || f === "backlog") body += group("Backlog", by("backlog"));
-    if (st.showDone && (f === "all" || f === "done")) {
-      const done = by("done"), today = done.filter(c => isToday(c.last_activity)), earlier = done.filter(c => !isToday(c.last_activity));
-      if (f === "done") body += group("Done", done);
-      else {
-        body += group("Done today", today);
-        if (earlier.length) {
-          body += `<div class="grp-h">Done earlier</div>`;
-          body += st.showEarlier ? earlier.map(cardHTML).join("")
-            : `<div class="fold">${earlier.slice(0, 8).map(c => `<a data-t="${esc(c.slug)}">✓ ${esc(c.slug)}</a>`).join("")}<a class="more" data-more="1">${earlier.length > 8 ? "+" + (earlier.length - 8) + " more · " : ""}show all</a></div>`;
-        }
-      }
+    if (st.showDone) {
+      const done = by("done");
+      body += group("Done today", done.filter(c => isToday(c.last_activity)));
+      body += group("Done earlier", done.filter(c => !isToday(c.last_activity)));
+    } else {
+      if (f === "all" || f === "active") body += group("Active", by("active"));
+      if (f === "all" || f === "attention") body += group("Needs attention", by("attention"));
+      if (f === "all" || f === "backlog") body += group("Backlog", by("backlog"));
     }
     $("#mid").innerHTML = `
       <div class="mid-h">
         <h2><span class="hash">${ch.slug==="_floating"?"~":"#"}</span>${esc(ch.name || ch.slug)}</h2>
         <div class="sub">${ch.total||0} tasks · ${ch.open||0} open · ${ch.live||0} live · ${ch.attention||0} need attention</div>
-        <div class="filters">${FILTERS.filter(([k]) => k !== "done" || st.showDone).map(([k,l]) => `<button class="flt ${f===k?"on":""}" data-f="${k}">${l}<span class="c">${counts[k]}</span></button>`).join("")}
-          <span class="tgl ${st.showDone ? "on" : ""}" id="donetgl" title="Show finished tasks"><span class="sw"></span>Show done</span></div>
+        <div class="filters">${st.showDone ? `<span class="flt on">Done<span class="c">${by("done").length}</span></span>`
+          : FILTERS.filter(([k]) => k !== "done").map(([k,l]) => `<button class="flt ${f===k?"on":""}" data-f="${k}">${l}<span class="c">${counts[k]}</span></button>`).join("")}
+          <span class="tgl ${st.showDone ? "on" : ""}" id="donetgl" title="Switch between open and done tasks"><span class="sw"></span>Show done</span></div>
       </div>
       <div class="list">${body || `<div class="placeholder">nothing here</div>`}</div>`;
   }
