@@ -197,6 +197,12 @@
   .tgl .sw:after{content:"";position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;background:var(--faint);transition:.15s;}
   .tgl.on .sw{background:var(--done-soft);}
   .tgl.on .sw:after{left:14px;background:var(--done);}
+  .th-h .slug .acts{margin-left:auto;display:flex;gap:6px;}
+  .ch.expanded{grid-template-columns:minmax(0,1fr);}
+  .ch.expanded .side,.ch.expanded .mid{display:none;}
+  .ch.expanded .thread{position:static;width:auto;box-shadow:none;border-left:0;}
+  .ch.expanded .th-h > *,.ch.expanded .brief,.ch.expanded .chat,.ch.expanded .nosess,.ch.expanded .day{max-width:980px;margin-left:auto;margin-right:auto;}
+  .ch.expanded .brief{margin-top:14px;}
   .nosess{margin:10px 18px;padding:10px 12px;border-radius:8px;background:var(--panel-2);color:var(--faint);font:12px "IBM Plex Mono",monospace;}
   @media (max-width:1100px){ .ch{grid-template-columns:220px minmax(0,1fr);} .thread{position:fixed;right:0;top:48px;bottom:0;width:min(460px,100%);box-shadow:-20px 0 40px rgba(0,0,0,.35);z-index:5;} }
   @media (max-width:720px){ .ch{grid-template-columns:1fr;} .side{display:none;} .side.show{display:block;position:fixed;inset:48px 0 0 0;z-index:6;} #menu{display:inline-block!important;} }
@@ -245,8 +251,8 @@
   const st = { channels: [], live: [], cards: [], channel: null, thread: null, sess: null, filter: "all", showEarlier: false, briefOpen: false, lastOk: 0, seen: {}, showDone: false, statusMsg: null, busy: false };
   try { st.showDone = localStorage.getItem("flowhub-showdone") === "1"; } catch(e) {}
   try { st.seen = JSON.parse(localStorage.getItem("flowhub-seen") || "{}"); } catch(e) {}
-  function readHash(){ const p = new URLSearchParams(location.hash.slice(1)); return { c: p.get("c"), t: p.get("t"), v: p.get("v") }; }
-  function writeHash(h){ const p = new URLSearchParams(); if (h.v && h.v!=="channels") p.set("v", h.v); if (h.c) p.set("c", h.c); if (h.t) p.set("t", h.t); history.replaceState(null, "", "#" + p.toString()); }
+  function readHash(){ const p = new URLSearchParams(location.hash.slice(1)); return { c: p.get("c"), t: p.get("t"), v: p.get("v"), x: p.get("x") === "1" }; }
+  function writeHash(h){ const p = new URLSearchParams(); if (h.v && h.v!=="channels") p.set("v", h.v); if (h.c) p.set("c", h.c); if (h.t) p.set("t", h.t); if (h.t && h.x) p.set("x", "1"); history.replaceState(null, "", "#" + p.toString()); }
   let sel = readHash();
 
   // ---------- time ----------
@@ -472,7 +478,7 @@
     const longBrief = (th.brief || "").split("\n").length > 12;
     el.innerHTML = `
       <div class="th-h">
-        <div class="slug"><span class="dot ${s.dot}"></span>${esc(th.slug)}<span class="pill ${s.pill}">${esc(s.label)}</span><button class="ibtn x" id="closeth" title="Close">✕</button></div>
+        <div class="slug"><span class="dot ${s.dot}"></span>${esc(th.slug)}<span class="pill ${s.pill}">${esc(s.label)}</span><span class="acts"><button class="ibtn" id="expandth" title="${sel.x ? "Collapse (Esc)" : "Expand to full pane"}">${sel.x ? "⤡" : "⤢"}</button><button class="ibtn" id="closeth" title="Close">✕</button></span></div>
         ${th.name ? `<div class="name">${esc(th.name)}</div>` : ""}
         <div class="facts">${facts.map(f => `<span class="fact">${esc(f)}</span>`).join("")}</div>
         <div class="segrow"><div class="seg">${[["backlog","Backlog"],["in-progress","In progress"],["done","Done"]].map(([k,l]) =>
@@ -523,7 +529,8 @@
     sel.t = c.dataset.t; writeHash(sel); renderMid(); renderSide(); loadThread(sel.t, true);
   });
   $("#thread").addEventListener("click", e => {
-    if (e.target.closest("#closeth")) { sel.t = null; st.thread = null; st.sess = null; writeHash(sel); $("#thread").hidden = true; renderMid(); renderSide(); }
+    if (e.target.closest("#expandth")) { setExpanded(!sel.x); return; }
+    if (e.target.closest("#closeth")) { setExpanded(false); sel.t = null; st.thread = null; st.sess = null; writeHash(sel); $("#thread").hidden = true; renderMid(); renderSide(); }
     if (e.target.closest("#brieftog")) { const el = $("#thread"), top = el.scrollTop; st.briefOpen = !st.briefOpen; renderThread(); el.scrollTop = top; }
     if (e.target.closest("#earlier")) loadEarlier();
     const sb = e.target.closest("[data-status]");
@@ -534,7 +541,13 @@
   $("#thread").addEventListener("scroll", updateJump);
   $("#find").addEventListener("input", renderSide);
   $("#menu").addEventListener("click", () => $("#side").classList.toggle("show"));
-  document.addEventListener("keydown", e => { if (e.key === "Escape" && sel.t) $("#closeth")?.click(); });
+  document.addEventListener("keydown", e => { if (e.key !== "Escape" || !sel.t) return; if (sel.x) setExpanded(false); else $("#closeth")?.click(); });
+  function setExpanded(on){
+    sel.x = !!on && !!sel.t; writeHash(sel);
+    document.querySelector(".ch").classList.toggle("expanded", sel.x);
+    const el = $("#thread"), atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    renderThread(); if (atBottom) el.scrollTop = el.scrollHeight;
+  }
 
   // ---------- tabs ----------
   function showView(v){
@@ -556,11 +569,13 @@
 
   window.addEventListener("hashchange", () => {
     sel = readHash(); showView(sel.v === "graph" ? "graph" : "channels");
+    document.querySelector(".ch").classList.toggle("expanded", !!(sel.x && sel.t));
     if (sel.c) loadChannel(sel.c, true);
     if (sel.t) loadThread(sel.t, true); else $("#thread").hidden = true;
     renderSide();
   });
   showView(sel.v === "graph" ? "graph" : "channels");
+  document.querySelector(".ch").classList.toggle("expanded", !!(sel.x && sel.t));
   refresh();
   setInterval(() => { if (!document.hidden && sel.v !== "graph") refresh(); }, POLL_MS);
 })();
