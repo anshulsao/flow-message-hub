@@ -6,7 +6,10 @@ import (
 	"testing"
 )
 
-func seedDB(t *testing.T) string {
+func seedDB(t *testing.T) string { t.Helper(); return seedDBWith(t) }
+
+// seedDBWith runs extra statements after the base seed (e.g. newer columns).
+func seedDBWith(t *testing.T, extra ...string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "flow.db")
 	db, err := sql.Open("sqlite", path)
@@ -14,7 +17,7 @@ func seedDB(t *testing.T) string {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	for _, q := range []string{
+	for _, q := range append([]string{
 		`CREATE TABLE projects (slug TEXT, name TEXT, status TEXT, archived_at TEXT, deleted_at TEXT)`,
 		`CREATE TABLE tasks (slug TEXT, name TEXT, project_slug TEXT, status TEXT, priority TEXT,
 			waiting_on TEXT, auto_run_status TEXT, auto_run_started TEXT, auto_run_finished TEXT,
@@ -25,7 +28,7 @@ func seedDB(t *testing.T) string {
 		`INSERT INTO tasks VALUES ('a','A','fampay','in-progress','high','Anuj','running','2026-10-27T13:00:00+05:30',NULL,
 			'2026-10-27T12:00:00+05:30','2026-10-27T13:00:00+05:30','sid-a',NULL,NULL)`,
 		`INSERT INTO tasks VALUES ('gone','G',NULL,'done','low',NULL,NULL,NULL,NULL,'x','x',NULL,'2026-01-01',NULL)`,
-	} {
+	}, extra...) {
 		if _, err := db.Exec(q); err != nil {
 			t.Fatalf("%s: %v", q, err)
 		}

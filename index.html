@@ -191,6 +191,16 @@
   .ms details[open] summary{white-space:normal;}
   .ms .full{white-space:pre-wrap;margin-top:6px;color:var(--ink);font-size:12.5px;}
   .ms .full.md{white-space:normal;}
+  .ms.spin{border-style:solid;cursor:pointer;align-items:center;color:var(--ink);}
+  .ms.spin:hover{background:var(--panel-2);}
+  .ms.spin > *{white-space:nowrap;flex:none;}
+  .ms.spin .nm{color:var(--muted);overflow:hidden;text-overflow:ellipsis;min-width:0;flex:1 1 0;}
+  .ms.spin .dot{align-self:center;}
+  .tagk.spin{background:var(--live-soft);color:var(--live);}
+  .famlink{font-size:12px;color:var(--muted);margin-top:4px;}
+  .famlink a,.fact.kids{cursor:pointer;color:var(--live);text-decoration:none;}
+  .famlink a:hover,.fact.kids:hover{text-decoration:underline;}
+  .card .foot .par{color:var(--live);}
   .earlier{display:block;margin:10px auto;background:var(--panel-2);border:1px solid var(--line);border-radius:999px;padding:3px 14px;font-size:12px;color:var(--muted);cursor:pointer;}
   .earlier:hover{color:var(--ink);}
   .jump{position:sticky;bottom:12px;margin-left:auto;margin-right:16px;display:block;background:var(--accent);color:#111;border:0;border-radius:999px;padding:4px 12px;font:600 12px "IBM Plex Sans",sans-serif;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.3);}
@@ -453,6 +463,7 @@
   function cardHTML(c){
     const s = stateOf(c);
     const foot = [
+      c.parent ? `<span class="par" title="spun off from ${esc(c.parent)}">↖ ${esc(c.parent)}</span>` : "",
       c.messages ? `💬 ${c.messages}` : "",
       c.last_activity ? ago(c.last_activity) : "",
       c.priority === "high" ? `<span class="pri-high">high</span>` : c.priority ? c.priority : "",
@@ -551,6 +562,11 @@
       }
     }
   }
+  function spinHTML(k){
+    const s = stateOf(k);
+    return `<div class="ms spin" data-goto="${esc(k.slug)}" title="Open ${esc(k.slug)}"><span class="tagk spin">spun off</span><span class="dot ${s.dot}"></span><b>${esc(k.slug)}</b><span class="nm">${k.name && k.name !== k.slug ? esc(k.name) : ""}</span><span class="pill ${s.pill}">${esc(s.label)}</span><span class="tm">${hhmm(k.created)}</span></div>`;
+  }
+  function gotoTask(slug){ sel.t = slug; writeHash(sel); renderMid(); renderSide(); loadThread(slug, true); }
   function chatHTML(it, slug){
     if (it.kind === "tools") return `<div class="tl">▸ ran ${it.tools} tool${it.tools > 1 ? "s" : ""} · ${esc(it.tool_names)}</div>`;
     const you = it.kind === "you";
@@ -571,11 +587,13 @@
       th.messages ? `${th.messages} bus msgs` : "",
     ].filter(Boolean);
     st.agentMsgs = [];
+    const kids = th.children || [];
+    const spun = kids.map(k => ({ t: new Date(k.created).getTime(), html: () => spinHTML(k), time: k.created })).filter(x => x.t);
     const chat = sess.older.concat(sess.latest).map(it => ({ t: new Date(it.time).getTime(), html: () => chatHTML(it, th.slug), time: it.time }));
     const floor = sess.found && sess.hasMore && chat.length ? chat[0].t : -Infinity;
     const ms = (th.events || []).filter(e => new Date(e.time).getTime() >= floor)
       .map(e => ({ t: new Date(e.time).getTime(), html: () => milestoneHTML(e), time: e.time }));
-    const all = chat.concat(ms).sort((a, b) => a.t - b.t);
+    const all = chat.concat(ms, spun.filter(x => x.t >= floor)).sort((a, b) => a.t - b.t);
     let lastDay = "", body = "";
     for (const x of all) { const d = dayLabel(x.time); if (d !== lastDay) { body += `<div class="day">${d}</div>`; lastDay = d; } body += x.html(); }
     const longBrief = (th.brief || "").split("\n").length > 12;
@@ -583,7 +601,8 @@
       <div class="th-h">
         <div class="slug"><span class="dot ${s.dot}"></span>${esc(th.slug)}<span class="pill ${s.pill}">${esc(s.label)}</span><span class="acts"><button class="ibtn" id="expandth" title="${sel.x ? "Collapse (Esc)" : "Expand to full pane"}">${sel.x ? "⤡" : "⤢"}</button><button class="ibtn" id="closeth" title="Close">✕</button></span></div>
         ${th.name ? `<div class="name">${esc(th.name)}</div>` : ""}
-        <div class="facts">${projectSelectHTML(th)}${facts.map(f => `<span class="fact">${esc(f)}</span>`).join("")}</div>
+        ${th.parent ? `<div class="famlink">↖ spun off from ${th.parent_task ? `<a data-goto="${esc(th.parent)}" title="${esc(th.parent_task.name || "")}">${esc(th.parent)}</a> <span class="pill ${stateOf(th.parent_task).pill}">${esc(stateOf(th.parent_task).label)}</span>` : `${esc(th.parent)} (archived)`}</div>` : ""}
+        <div class="facts">${projectSelectHTML(th)}${kids.length ? `<span class="fact kids" id="kidsjump" title="Jump to spun-off tasks">⚙ ${kids.length} spun off</span>` : ""}${facts.map(f => `<span class="fact">${esc(f)}</span>`).join("")}</div>
         <div class="segrow"><div class="seg">${[["backlog","Backlog"],["in-progress","In progress"],["done","Done"]].map(([k,l]) =>
           `<button data-status="${k}" class="${th.status===k?"cur":""}" ${st.busy?"disabled":""}>${l}</button>`).join("")}</div>
           <button class="bb" data-status="archive" ${st.busy?"disabled":""} title="Hide from views; undo with flow unarchive">Archive</button>${statusMsgHTML(th.slug)}</div>
@@ -798,6 +817,8 @@
     if (sb && !sb.classList.contains("cur") && !st.busy && st.thread) setStatus(st.thread.slug, sb.dataset.status, false);
     if (e.target.closest("#confirmdone") && st.thread) setStatus(st.thread.slug, (st.statusMsg && st.statusMsg.target) || "done", true);
     if (e.target.closest("#jump")) { const el = $("#thread"); el.scrollTop = el.scrollHeight; }
+    const g = e.target.closest("[data-goto]"); if (g) { gotoTask(g.dataset.goto); return; }
+    if (e.target.closest("#kidsjump")) { const m = document.querySelector("#thbody .ms.spin"); if (m) m.scrollIntoView({ block: "center", behavior: "smooth" }); else $("#thread").scrollTop = 0; }   // older than the loaded page: show "load earlier"
     const mb = e.target.closest(".more[data-mi]"); if (mb) { e.stopPropagation(); mb.classList.contains("open") ? closeMsgMenu() : openMsgMenu(mb); }
   });
   document.addEventListener("click", e => { if (!e.target.closest("#msgmenu,.more")) closeMsgMenu(); });

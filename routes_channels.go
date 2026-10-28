@@ -172,7 +172,15 @@ func registerChannelRoutes(mux *http.ServeMux, st *store, root, projectsDir stri
 			}
 			brief, notes := readTaskFiles(root, slug)
 			run := chanRunStates([]chanTask{t})[slug]
-			writeJSON(w, buildThread(t, brief, notes, msgs, run))
+			th := buildThread(t, brief, notes, msgs, run)
+			var fam []chanTask
+			for _, o := range tasks {
+				if o.Slug == t.Parent || o.Parent == t.Slug {
+					fam = append(fam, o)
+				}
+			}
+			th.ParentTask, th.Children = buildFamily(t, fam, chanRunStates(fam), time.Now())
+			writeJSON(w, th)
 			return
 		}
 		http.NotFound(w, r)

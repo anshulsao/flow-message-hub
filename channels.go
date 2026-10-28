@@ -26,6 +26,7 @@ type chanTask struct {
 	Slug, Name, Project, Status, Priority, WaitingOn string
 	AutoRunStatus, AutoRunStarted, AutoRunFinished   string
 	CreatedAt, UpdatedAt, SessionID                  string
+	Parent                                           string // tasks.parent_slug: the task whose session created this one
 }
 
 // note is one file under ~/.flow/tasks/<slug>/updates/.
@@ -76,6 +77,8 @@ type Card struct {
 	Latest       string `json:"latest"`
 	Messages     int    `json:"messages"`
 	LastActivity string `json:"last_activity"`
+	Parent       string `json:"parent,omitempty"` // slug of the task that spun this one off
+	Created      string `json:"created,omitempty"`
 }
 
 type Event struct {
@@ -90,9 +93,11 @@ type Event struct {
 
 type Thread struct {
 	Card
-	Project string  `json:"project"`
-	Brief   string  `json:"brief"`
-	Events  []Event `json:"events"`
+	Project    string  `json:"project"`
+	Brief      string  `json:"brief"`
+	Events     []Event `json:"events"`
+	ParentTask *Card   `json:"parent_task,omitempty"`
+	Children   []Card  `json:"children"`
 }
 
 func parseT(s string) time.Time {
@@ -243,6 +248,7 @@ func buildCards(tasks []chanTask, msgs []rawMessage, notes map[string]note, runs
 			Priority: t.Priority, WaitingOn: t.WaitingOn,
 			Auto: t.AutoRunStatus != "", AutoStatus: t.AutoRunStatus,
 			AutoStarted: t.AutoRunStarted, AutoFinished: t.AutoRunFinished,
+			Parent: t.Parent, Created: t.CreatedAt,
 		}
 		lastT[i] = later(parseT(t.UpdatedAt), parseT(t.AutoRunFinished))
 		if n, ok := notes[t.Slug]; ok {
@@ -334,8 +340,34 @@ func buildThread(t chanTask, brief string, notes []note, msgs []rawMessage, run 
 			Auto: t.AutoRunStatus != "", AutoStatus: t.AutoRunStatus,
 			AutoStarted: t.AutoRunStarted, AutoFinished: t.AutoRunFinished,
 			Messages: count, LastActivity: fmtT(last),
+			Parent: t.Parent, Created: t.CreatedAt,
 		},
 		Project: t.Project, Brief: brief, Events: evs,
 	}
 	return th
+}
+
+// buildFamily returns t's parent card (nil when t is top-level or the parent
+// is archived) and the cards of tasks spun off from t, oldest first.
+func buildFamily(t chanTask, all []chanTask, runs map[string]string, now time.Time) (*Card, []Card) {
+	var fam []chanTask
+	var parent *chanTask
+	for i := range all {
+		switch {
+		case t.Parent != "" && all[i].Slug == t.Parent:
+			parent = &all[i]
+		case all[i].Parent == t.Slug && all[i].Slug != t.Slug:
+			fam = append(fam, all[i])
+		}
+	}
+	kids := buildCards(fam, nil, nil, runs, now)
+	sort.SliceStable(kids, func(i, j int) bool { return parseT(kids[i].Created).Before(parseT(kids[j].Created)) })
+	if kids == nil {
+		kids = []Card{}
+	}
+	if parent == nil {
+		return nil, kids
+	}
+	pc := buildCards([]chanTask{*parent}, nil, nil, runs, now)[0]
+	return &pc, kids
 }
