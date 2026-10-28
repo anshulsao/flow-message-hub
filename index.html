@@ -234,6 +234,15 @@
   .cmp-hint.ok{color:var(--done);}
   .cmp-hint.busy{color:var(--warn);}
   .cmp-open{margin-left:8px;background:var(--accent);color:#111;border:0;border-radius:6px;padding:2px 10px;font:600 11.5px "IBM Plex Sans",sans-serif;cursor:pointer;}
+  .msg{position:relative;}
+  .msg .more{position:absolute;top:4px;right:12px;opacity:0;border:1px solid var(--line);background:var(--panel);color:var(--muted);border-radius:6px;padding:0 7px;font-size:14px;line-height:20px;cursor:pointer;}
+  .msg:hover .more,.msg .more:focus-visible,.msg .more.open{opacity:1;}
+  .msg .more:hover{color:var(--text);}
+  #msgmenu{position:fixed;z-index:50;min-width:200px;background:var(--panel);border:1px solid var(--line);border-radius:8px;box-shadow:0 6px 24px rgba(0,0,0,.18);padding:4px;font-size:13px;}
+  #msgmenu button{display:block;width:100%;text-align:left;border:0;background:none;color:var(--text);padding:7px 10px;border-radius:5px;cursor:pointer;font:inherit;}
+  #msgmenu button:hover:not(:disabled){background:var(--panel-2);}
+  #msgmenu button:disabled{color:var(--faint);cursor:default;}
+  #msgmenu .why{padding:2px 10px 6px;color:var(--faint);font-size:11.5px;max-width:240px;}
   .msg.pending{opacity:.55;}
   .msg.pending .tm:after{content:" · sending…";}
   .jump{bottom:12px;}
@@ -545,7 +554,8 @@
   function chatHTML(it, slug){
     if (it.kind === "tools") return `<div class="tl">▸ ran ${it.tools} tool${it.tools > 1 ? "s" : ""} · ${esc(it.tool_names)}</div>`;
     const you = it.kind === "you";
-    return `<div class="msg ${it.kind}"><div class="av ${it.kind}">${you ? "you" : "AI"}</div><div>
+    const more = you ? "" : `<button class="more" data-mi="${st.agentMsgs.push(it) - 1}" title="More actions" aria-label="More actions">⋯</button>`;
+    return `<div class="msg ${it.kind}">${more}<div class="av ${it.kind}">${you ? "you" : "AI"}</div><div>
       <div class="hd"><b>${you ? "you" : esc(slug)}</b><span class="tm">${hhmm(it.time)}</span></div>
       <div class="tx ${you ? "" : "md"}">${you ? esc(it.body) : md(it.body)}</div></div></div>`;
   }
@@ -560,6 +570,7 @@
       th.waiting_on ? `waiting on: ${th.waiting_on}` : "",
       th.messages ? `${th.messages} bus msgs` : "",
     ].filter(Boolean);
+    st.agentMsgs = [];
     const chat = sess.older.concat(sess.latest).map(it => ({ t: new Date(it.time).getTime(), html: () => chatHTML(it, th.slug), time: it.time }));
     const floor = sess.found && sess.hasMore && chat.length ? chat[0].t : -Infinity;
     const ms = (th.events || []).filter(e => new Date(e.time).getTime() >= floor)
@@ -664,6 +675,44 @@
     } catch (e) { flashHint("failed: " + e.message, "err"); }
     st.sending = false; renderComposer(); focusComposer();
   }
+  // ---------- ⋯ menu on AI messages ----------
+  function flowAutoText(it){
+    const lines = it.body.split("\n"), q = lines.slice(0, 8).join("\n");
+    const clip = q.length > 600 ? q.slice(0, 600) + "…" : (lines.length > 8 ? q + "\n…" : q);
+    return `Flow auto this. Your message from ${hhmm(it.time)}:\n${clip.split("\n").map(l => "> " + l).join("\n")}\n\n` +
+      "Spin it off as a new flow task in this task's project: write a complete brief from what you know, then launch it with `flow do --auto <slug>`. " +
+      "Don't do the work in this session. Reply with the new slug.";
+  }
+  function canSendHere(){
+    const th = st.thread; if (!th || th.status !== "in-progress") return th && th.status === "done" ? "task is done" : "task isn't in progress";
+    if (st.cmpMode === "auto" || (st.prompt && st.prompt.ok)) return "";
+    return (st.prompt && st.prompt.reason) || "session can't take messages right now";
+  }
+  function closeMsgMenu(){ const m = $("#msgmenu"); if (m) m.remove(); document.querySelectorAll(".more.open").forEach(b => b.classList.remove("open")); }
+  function openMsgMenu(btn){
+    closeMsgMenu();
+    const it = st.agentMsgs[+btn.dataset.mi]; if (!it) return;
+    const why = canSendHere(), m = document.createElement("div");
+    m.id = "msgmenu"; m.setAttribute("role", "menu");
+    m.innerHTML = `<button data-act="auto" ${why ? "disabled" : ""}>⚙ Flow auto this</button>${why ? `<div class="why">${esc(why)}</div>` : ""}
+      <button data-act="copy">Copy text</button>`;
+    document.body.appendChild(m); btn.classList.add("open");
+    const r = btn.getBoundingClientRect();
+    m.style.top = Math.min(r.bottom + 4, innerHeight - m.offsetHeight - 8) + "px";
+    m.style.left = Math.max(8, r.right - m.offsetWidth) + "px";
+    m.addEventListener("click", async e => {
+      const a = e.target.closest("[data-act]"); if (!a || a.disabled) return;
+      closeMsgMenu();
+      if (a.dataset.act === "copy") { try { await navigator.clipboard.writeText(it.body); flashHint("✓ copied", "ok"); } catch (_) { flashHint("copy failed", "err"); } return; }
+      flowAutoThis(it);
+    });
+  }
+  async function flowAutoThis(it){
+    const ta = $("#cmptext"), draft = ta.value;   // keep the user's draft
+    ta.value = flowAutoText(it);
+    await sendPrompt();
+    ta.value = draft; if (st.cmpSlug) st.drafts[st.cmpSlug] = draft; autoGrow();
+  }
   function projectSelectHTML(th){
     const ps = [...(st.projects || [])].sort((a, b) => a.name.localeCompare(b.name));
     if (th.project && !ps.some(p => p.slug === th.project)) ps.unshift({ slug: th.project, name: th.project });
@@ -749,7 +798,12 @@
     if (sb && !sb.classList.contains("cur") && !st.busy && st.thread) setStatus(st.thread.slug, sb.dataset.status, false);
     if (e.target.closest("#confirmdone") && st.thread) setStatus(st.thread.slug, (st.statusMsg && st.statusMsg.target) || "done", true);
     if (e.target.closest("#jump")) { const el = $("#thread"); el.scrollTop = el.scrollHeight; }
+    const mb = e.target.closest(".more[data-mi]"); if (mb) { e.stopPropagation(); mb.classList.contains("open") ? closeMsgMenu() : openMsgMenu(mb); }
   });
+  document.addEventListener("click", e => { if (!e.target.closest("#msgmenu,.more")) closeMsgMenu(); });
+  document.addEventListener("keydown", e => { if (e.key === "Escape" && $("#msgmenu")) { e.stopImmediatePropagation(); closeMsgMenu(); } }, true);
+  $("#thread").addEventListener("wheel", closeMsgMenu, { passive: true });   // user scrolls only; polls auto-scroll
+  $("#thread").addEventListener("touchmove", closeMsgMenu, { passive: true });
   $("#thread").addEventListener("scroll", updateJump);
   $("#thread").addEventListener("change", e => { if (e.target.id === "projsel" && st.thread) setProject(st.thread.slug, e.target.value); });
   $("#thread").addEventListener("focusin", e => { if (e.target.id === "projsel") loadProjects(); });
