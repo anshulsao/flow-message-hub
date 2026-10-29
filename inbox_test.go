@@ -1,6 +1,10 @@
 package main
 
-import "testing"
+import (
+	"encoding/json"
+	"strings"
+	"testing"
+)
 
 func threadFor(v InboxView, task string) *InboxThread {
 	for i := range v.Threads {
@@ -158,5 +162,15 @@ func TestBuildInbox_PeerTrafficExcluded(t *testing.T) {
 	v := buildInbox(msgs, map[string]taskMeta{})
 	if len(v.Threads) != 0 {
 		t.Fatalf("peer traffic must not create inbox threads: %+v", v.Threads)
+	}
+}
+
+func TestBuildInbox_NoThreadsEncodesEmptyArray(t *testing.T) {
+	b, err := json.Marshal(buildInbox(nil, map[string]taskMeta{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), `"threads":[]`) {
+		t.Fatalf("an empty inbox must encode threads as [], got %s", b)
 	}
 }
