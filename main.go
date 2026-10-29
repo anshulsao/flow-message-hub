@@ -275,6 +275,8 @@ func main() {
 	registerBulkRoute(mux, st, fx)
 	lister := &agentsLister{}
 	registerPromptRoute(mux, st, promptDeps_{agents: lister.list, tty: ttyOfClaude, sender: itermSender{}})
+	st.drafts = newDraftStore(filepath.Join(filepath.Dir(*dbPath), "flowhub-drafts.json"))
+	registerNewRoute(mux, st, itermLauncher{})
 
 	page := func(body []byte) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {

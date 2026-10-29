@@ -201,6 +201,13 @@
   .famlink a,.fact.kids{cursor:pointer;color:var(--live);text-decoration:none;}
   .famlink a:hover,.fact.kids:hover{text-decoration:underline;}
   .card .foot .par{color:var(--live);}
+  .newbtn{margin-left:auto;align-self:center;font:600 12px "IBM Plex Mono",monospace;color:var(--text);background:transparent;border:1px solid var(--line);border-radius:7px;padding:3px 10px;cursor:pointer;}
+  .newbtn:hover{border-color:var(--live);color:var(--live);}
+  .newbtn:disabled{opacity:.5;cursor:default;}
+  .card.draft{border-style:dashed;}
+  .card.draft .slug{font-style:italic;}
+  .newmsg{font:11px "IBM Plex Mono",monospace;color:var(--muted);padding:4px 20px 0;}
+  .newmsg.err{color:var(--bad, #e5534b);}
   .earlier{display:block;margin:10px auto;background:var(--panel-2);border:1px solid var(--line);border-radius:999px;padding:3px 14px;font-size:12px;color:var(--muted);cursor:pointer;}
   .earlier:hover{color:var(--ink);}
   .jump{position:sticky;bottom:12px;margin-left:auto;margin-right:16px;display:block;background:var(--accent);color:#111;border:0;border-radius:999px;padding:4px 12px;font:600 12px "IBM Plex Sans",sans-serif;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.3);}
@@ -311,7 +318,7 @@
   const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 
   // ---------- state (selection lives in the URL hash) ----------
-  const st = { channels: [], live: [], cards: [], channel: null, thread: null, sess: null, filter: "all", showEarlier: false, briefOpen: false, lastOk: 0, seen: {}, showDone: false, statusMsg: null, busy: false, prompt: null, drafts: {}, pending: null, cmpSlug: null, sending: false, picked: new Set(), lastPick: null, bulk: null };
+  const st = { channels: [], live: [], cards: [], channel: null, thread: null, sess: null, filter: "all", showEarlier: false, briefOpen: false, lastOk: 0, seen: {}, showDone: false, statusMsg: null, busy: false, prompt: null, drafts: {}, pending: null, cmpSlug: null, sending: false, picked: new Set(), lastPick: null, bulk: null, launching: false, newMsg: null };
   try { st.showDone = localStorage.getItem("flowhub-showdone") === "1"; } catch(e) {}
   try { st.seen = JSON.parse(localStorage.getItem("flowhub-seen") || "{}"); } catch(e) {}
   function readHash(){ const p = new URLSearchParams(location.hash.slice(1)); return { c: p.get("c"), t: p.get("t"), v: p.get("v"), x: p.get("x") === "1" }; }
@@ -406,7 +413,12 @@
     const atBottom = !fresh && el.scrollHeight - el.scrollTop - el.clientHeight < 80;
     try {
       const th = await getJSON("/api/thread/" + encodeURIComponent(slug));
-      if (fresh) {
+      if (th.bound) {   // Claude made the task and bound this session: open the real thread
+        st.newMsg = { ch: sel.c, kind: "", text: `✓ session became task ${th.bound}` };
+        if (sel.t === slug) { gotoTask(th.bound); if (sel.c) loadChannel(sel.c, false); }
+        return;
+      }
+      if (fresh || !st.sess.found) {   // retry until the transcript exists (a new session writes it after its first turn)
         const pg = await getJSON("/api/session/" + encodeURIComponent(slug));
         st.sess = { slug, older: [], latest: pg.items, liveFrom: pg.start, oldest: pg.start, hasMore: pg.has_more, found: pg.found };
       } else if (st.sess.found) {
@@ -470,16 +482,16 @@
       c.waiting_on ? `waiting on: ${esc(c.waiting_on)}` : "",
     ].filter(Boolean).join(" · ");
     const picked = st.picked.has(c.slug);
-    return `<div class="card ${sel.t===c.slug?"on":""} ${picked?"picked":""}" data-t="${esc(c.slug)}">
-      <span class="lead"><span class="dot ${s.dot}"></span><input type="checkbox" class="pick" data-pick="${esc(c.slug)}" ${picked?"checked":""} title="Select (Shift-click for a range)"></span>
-      <span class="slug">${esc(c.slug)}</span>
+    return `<div class="card ${sel.t===c.slug?"on":""} ${picked?"picked":""} ${c.draft?"draft":""}" data-t="${esc(c.slug)}">
+      <span class="lead"><span class="dot ${s.dot}"></span>${c.draft ? "" : `<input type="checkbox" class="pick" data-pick="${esc(c.slug)}" ${picked?"checked":""} title="Select (Shift-click for a range)">`}</span>
+      <span class="slug">${c.draft ? "✎ new session" : esc(c.slug)}</span>
       <span class="pill ${s.pill}">${esc(s.label)}</span>
       ${c.name && c.name !== c.slug ? `<span class="name">${esc(c.name)}</span>` : ""}
       ${c.latest ? `<span class="latest">${esc(c.latest)}</span>` : ""}
       <span class="foot">${foot || "no activity yet"}</span>
     </div>`;
   }
-  function visibleSlugs(){ return [...document.querySelectorAll("#mid .card[data-t]")].map(e => e.dataset.t); }
+  function visibleSlugs(){ return [...document.querySelectorAll("#mid .card[data-t]:not(.draft)")].map(e => e.dataset.t); }
   function bulkBarHTML(){
     const n = st.picked.size, b = st.bulk;
     if (!n && !b) return "";
@@ -536,7 +548,8 @@
     }
     $("#mid").innerHTML = `
       <div class="mid-h">
-        <h2><span class="hash">${ch.slug==="_floating"?"~":"#"}</span>${esc(ch.name || ch.slug)}</h2>
+        <h2><span class="hash">${ch.slug==="_floating"?"~":"#"}</span>${esc(ch.name || ch.slug)}<button class="newbtn" id="newsess" ${st.launching ? "disabled" : ""} title="Launch a new Claude session in iTerm. Claude asks what it's about, creates the task and binds itself to it.">${st.launching ? "launching…" : "+ New"}</button></h2>
+        ${st.newMsg && st.newMsg.ch === ch.slug ? `<div class="newmsg ${st.newMsg.kind}">${esc(st.newMsg.text)}</div>` : ""}
         <div class="sub">${ch.total||0} tasks · ${ch.open||0} open · ${ch.live||0} live · ${ch.attention||0} need attention</div>
         <div class="filters">${st.showDone ? `<span class="flt on">Done<span class="c">${by("done").length}</span></span>`
           : FILTERS.filter(([k]) => k !== "done").map(([k,l]) => `<button class="flt ${f===k?"on":""}" data-f="${k}">${l}<span class="c">${counts[k]}</span></button>`).join("")}
@@ -572,7 +585,7 @@
     const you = it.kind === "you";
     const more = you ? "" : `<button class="more" data-mi="${st.agentMsgs.push(it) - 1}" title="More actions" aria-label="More actions">⋯</button>`;
     return `<div class="msg ${it.kind}">${more}<div class="av ${it.kind}">${you ? "you" : "AI"}</div><div>
-      <div class="hd"><b>${you ? "you" : esc(slug)}</b><span class="tm">${hhmm(it.time)}</span></div>
+      <div class="hd"><b>${you ? "you" : esc(slug.startsWith("draft-") ? "claude" : slug)}</b><span class="tm">${hhmm(it.time)}</span></div>
       <div class="tx ${you ? "" : "md"}">${you ? esc(it.body) : md(it.body)}</div></div></div>`;
   }
   function renderThread(){
@@ -599,17 +612,17 @@
     const longBrief = (th.brief || "").split("\n").length > 12;
     $("#thbody").innerHTML = `
       <div class="th-h">
-        <div class="slug"><span class="dot ${s.dot}"></span>${esc(th.slug)}<span class="pill ${s.pill}">${esc(s.label)}</span><span class="acts"><button class="ibtn" id="expandth" title="${sel.x ? "Collapse (Esc)" : "Expand to full pane"}">${sel.x ? "⤡" : "⤢"}</button><button class="ibtn" id="closeth" title="Close">✕</button></span></div>
+        <div class="slug"><span class="dot ${s.dot}"></span>${th.draft ? "✎ new session" : esc(th.slug)}<span class="pill ${s.pill}">${esc(s.label)}</span><span class="acts"><button class="ibtn" id="expandth" title="${sel.x ? "Collapse (Esc)" : "Expand to full pane"}">${sel.x ? "⤡" : "⤢"}</button><button class="ibtn" id="closeth" title="Close">✕</button></span></div>
         ${th.name ? `<div class="name">${esc(th.name)}</div>` : ""}
         ${th.parent ? `<div class="famlink">↖ spun off from ${th.parent_task ? `<a data-goto="${esc(th.parent)}" title="${esc(th.parent_task.name || "")}">${esc(th.parent)}</a> <span class="pill ${stateOf(th.parent_task).pill}">${esc(stateOf(th.parent_task).label)}</span>` : `${esc(th.parent)} (archived)`}</div>` : ""}
-        <div class="facts">${projectSelectHTML(th)}${kids.length ? `<span class="fact kids" id="kidsjump" title="Jump to spun-off tasks">⚙ ${kids.length} spun off</span>` : ""}${facts.map(f => `<span class="fact">${esc(f)}</span>`).join("")}</div>
-        <div class="segrow"><div class="seg">${[["backlog","Backlog"],["in-progress","In progress"],["done","Done"]].map(([k,l]) =>
+        ${th.draft ? `<div class="facts"><span class="fact">not a task yet</span><span class="fact">${th.project ? "#" + esc(th.project) : "no project"}</span><span class="fact">becomes a task when Claude runs flow do --here</span></div>` : `<div class="facts">${projectSelectHTML(th)}${kids.length ? `<span class="fact kids" id="kidsjump" title="Jump to spun-off tasks">⚙ ${kids.length} spun off</span>` : ""}${facts.map(f => `<span class="fact">${esc(f)}</span>`).join("")}</div>`}
+        ${th.draft ? "" : `<div class="segrow"><div class="seg">${[["backlog","Backlog"],["in-progress","In progress"],["done","Done"]].map(([k,l]) =>
           `<button data-status="${k}" class="${th.status===k?"cur":""}" ${st.busy?"disabled":""}>${l}</button>`).join("")}</div>
-          <button class="bb" data-status="archive" ${st.busy?"disabled":""} title="Hide from views; undo with flow unarchive">Archive</button>${statusMsgHTML(th.slug)}</div>
+          <button class="bb" data-status="archive" ${st.busy?"disabled":""} title="Hide from views; undo with flow unarchive">Archive</button>${statusMsgHTML(th.slug)}</div>`}
       </div>
       ${th.brief ? `<div class="brief ${longBrief && !st.briefOpen ? "clip" : ""}"><div class="lbl">Brief</div><div class="md">${md(th.brief)}</div>
         ${longBrief ? `<button class="tog" id="brieftog">${st.briefOpen ? "show less" : "show full brief"}</button>` : ""}</div>` : ""}
-      ${sess.found ? (sess.hasMore ? `<button class="earlier" id="earlier">↑ load earlier</button>` : "") : `<div class="nosess">no session transcript for this task${th.status === "backlog" ? " (not started)" : ""}</div>`}
+      ${sess.found ? (sess.hasMore ? `<button class="earlier" id="earlier">↑ load earlier</button>` : "") : `<div class="nosess">${th.draft ? "starting Claude in iTerm… the conversation appears here" : "no session transcript for this task" + (th.status === "backlog" ? " (not started)" : "")}</div>`}
       <div class="chat">${body || `<div class="placeholder">no activity yet</div>`}${pendingHTML(th.slug, sess)}</div>
       <button class="jump" id="jump" hidden>↓ latest</button>`;
     updateJump();
@@ -643,7 +656,7 @@
     }
     btn.textContent = "↑";
     ta.disabled = !p.ok || st.sending; btn.disabled = !p.ok || st.sending || !ta.value.trim();
-    ta.placeholder = p.ok ? `Message ${th.slug}` : "can't send to this session";
+    ta.placeholder = p.ok ? (th.draft ? "Message the new session" : `Message ${th.slug}`) : "can't send to this session";
     if (hint.dataset.sticky && hint.dataset.slug === th.slug && Date.now() < +hint.dataset.until) return;
     hint.dataset.sticky = "";
     if (!p.ok) {
@@ -788,6 +801,7 @@
   });
   $("#mid").addEventListener("click", e => {
     const fb = e.target.closest("[data-f]"); if (fb) { st.filter = fb.dataset.f; renderMid(); return; }
+    if (e.target.closest("#newsess")) { newSession(); return; }
     if (e.target.closest("#donetgl")) { st.showDone = !st.showDone; try { localStorage.setItem("flowhub-showdone", st.showDone ? "1" : "0"); } catch(e) {} renderMid(); return; }
     if (e.target.closest("[data-more]")) { st.showEarlier = true; renderMid(); return; }
     const pk = e.target.closest("[data-pick]");
@@ -835,6 +849,25 @@
   });
   $("#cmpsend").addEventListener("click", sendPrompt);
   $("#composer").addEventListener("click", e => { if (e.target.closest("#cmpopen")) openInTerminal(); });
+  // + New: launch an unbound Claude session; it shows as a draft until bound
+  async function newSession(){
+    const ch = sel.c; if (!ch || st.launching) return;
+    st.launching = true; st.newMsg = null; renderMid();
+    try {
+      const r = await fetch("/api/new", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ channel: ch }) });
+      const d = await r.json().catch(() => ({ message: "HTTP " + r.status }));
+      if (!r.ok) { st.newMsg = { ch, kind: "err", text: d.message || ("HTTP " + r.status) }; return; }
+      st.newMsg = { ch, kind: "", text: "launched in iTerm · answer Claude there or in the box here" };
+      sel.t = d.slug; writeHash(sel);
+      await loadChannel(ch, false); renderSide(); await loadThread(d.slug, true);
+      for (let i = 0; i < 10 && sel.t === d.slug && !(st.prompt && st.prompt.ok); i++) {   // until Claude is up
+        await new Promise(res => setTimeout(res, 2000));
+        if (sel.t === d.slug) await loadThread(d.slug, false);
+      }
+      if (sel.t === d.slug) focusComposer();
+    } catch (e) { st.newMsg = { ch, kind: "err", text: "failed: " + e.message }; }
+    finally { st.launching = false; renderMid(); }
+  }
   async function openInTerminal(){
     const th = st.thread; if (!th) return;
     flashHint("opening in iTerm…", "busy");
@@ -891,6 +924,8 @@
   document.querySelector(".ch").classList.toggle("expanded", !!(sel.x && sel.t));
   refresh();
   setInterval(() => { if (!document.hidden && sel.v !== "graph") refresh(); }, POLL_MS);
+  // polls pause while hidden (e.g. you're in iTerm after + New): catch up on return
+  document.addEventListener("visibilitychange", () => { if (!document.hidden && sel.v !== "graph") refresh(); });
 })();
 </script>
 </body>

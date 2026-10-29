@@ -57,6 +57,31 @@ func registerChannelRoutes(mux *http.ServeMux, st *store, root, projectsDir stri
 		return tasks, msgs, true
 	}
 
+	// channelDrafts: open draft cards for a channel. Prunes drafts that were
+	// abandoned, or bound to a task long enough ago that no one is waiting.
+	channelDrafts := func(slug string, tasks []chanTask, now time.Time) []Card {
+		ds := st.drafts.list()
+		if len(ds) == 0 {
+			return nil
+		}
+		probe := newLivenessProbe()
+		var out []Card
+		for _, d := range ds {
+			state, _ := draftState(d, tasks, probe.sessionLive(d.SID), now)
+			switch {
+			case state == "abandoned", state == "bound" && now.Sub(d.Created) > draftKeepBound:
+				st.drafts.remove(d.SID)
+			case state == "open" && draftChannel(d) == slug:
+				latest, at := "", ""
+				if p := cache.path(projectsDir, d.SID); p != "" {
+					latest, at = cache.last(p)
+				}
+				out = append(out, draftCard(d, latest, at))
+			}
+		}
+		return out
+	}
+
 	mux.HandleFunc("/api/channels", get(func(w http.ResponseWriter, r *http.Request) {
 		tasks, msgs, ok := load(w)
 		if !ok {
@@ -84,7 +109,7 @@ func registerChannelRoutes(mux *http.ServeMux, st *store, root, projectsDir stri
 				slugs = append(slugs, t.Slug)
 			}
 		}
-		if len(mine) == 0 {
+		if len(mine) == 0 && len(channelDrafts(slug, tasks, time.Now())) == 0 {
 			http.NotFound(w, r)
 			return
 		}
@@ -101,9 +126,10 @@ func registerChannelRoutes(mux *http.ServeMux, st *store, root, projectsDir stri
 				summary = c
 			}
 		}
+		cards := buildCards(mine, msgs, agentLast(mine, latestNotes(root, slugs)), runs, now)
 		writeJSON(w, map[string]any{
 			"channel": summary,
-			"cards":   buildCards(mine, msgs, agentLast(mine, latestNotes(root, slugs)), runs, now),
+			"cards":   append(cards, channelDrafts(slug, tasks, now)...),
 		})
 	}))
 
@@ -127,6 +153,11 @@ func registerChannelRoutes(mux *http.ServeMux, st *store, root, projectsDir stri
 		if err != nil {
 			httpErr(w, err)
 			return
+		}
+		if sid, ok := draftSID(slug); ok {
+			if _, known := st.drafts.get(sid); known {
+				tasks = append(tasks, chanTask{Slug: slug, SessionID: sid})
+			}
 		}
 		for _, t := range tasks {
 			if t.Slug != slug {
@@ -164,6 +195,20 @@ func registerChannelRoutes(mux *http.ServeMux, st *store, root, projectsDir stri
 		slug := strings.TrimPrefix(r.URL.Path, "/api/thread/")
 		tasks, msgs, ok := load(w)
 		if !ok {
+			return
+		}
+		if sid, isDraft := draftSID(slug); isDraft {
+			d, known := st.drafts.get(sid)
+			if !known {
+				http.NotFound(w, r)
+				return
+			}
+			state, bound := draftState(d, tasks, newLivenessProbe().sessionLive(sid), time.Now())
+			c := draftCard(d, "", "")
+			if state != "open" {
+				c.RunState = "stopped"
+			}
+			writeJSON(w, Thread{Card: c, Project: d.Project, Events: []Event{}, Children: []Card{}, Bound: bound})
 			return
 		}
 		for _, t := range tasks {

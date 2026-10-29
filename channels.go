@@ -79,6 +79,7 @@ type Card struct {
 	LastActivity string `json:"last_activity"`
 	Parent       string `json:"parent,omitempty"` // slug of the task that spun this one off
 	Created      string `json:"created,omitempty"`
+	Draft        bool   `json:"draft,omitempty"` // hub-launched session, no task yet
 }
 
 type Event struct {
@@ -98,6 +99,7 @@ type Thread struct {
 	Events     []Event `json:"events"`
 	ParentTask *Card   `json:"parent_task,omitempty"`
 	Children   []Card  `json:"children"`
+	Bound      string  `json:"bound,omitempty"` // draft only: the task that now owns the session
 }
 
 func parseT(s string) time.Time {

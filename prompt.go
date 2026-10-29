@@ -228,6 +228,11 @@ func registerPromptRoute(mux *http.ServeMux, st *store, d promptDeps_) {
 			httpErr(w, err)
 			return
 		}
+		if sid, ok := draftSID(slug); ok {
+			if _, known := st.drafts.get(sid); known {
+				tasks = append(tasks, chanTask{Slug: slug, SessionID: sid, Status: "in-progress"})
+			}
+		}
 		var task *chanTask
 		for i := range tasks {
 			if tasks[i].Slug == slug {

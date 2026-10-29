@@ -1,5 +1,7 @@
 package main
 
+import "database/sql"
+
 func (s *store) projects() ([]project, error) {
 	rows, err := s.db.Query(`SELECT slug, name FROM projects
 		WHERE archived_at IS NULL AND deleted_at IS NULL ORDER BY slug`)
@@ -60,4 +62,21 @@ func chanRunStates(tasks []chanTask) map[string]string {
 		out[t.Slug] = runState(m, t.Status == "in-progress" && probe.sessionLive(t.SessionID))
 	}
 	return out
+}
+
+// projectWorkDir returns the project's work_dir ("" if unknown, or on an
+// older schema without the column).
+func (s *store) projectWorkDir(slug string) string {
+	if slug == "" {
+		return ""
+	}
+	var n int
+	if s.db.QueryRow(`SELECT count(*) FROM pragma_table_info('projects') WHERE name='work_dir'`).Scan(&n) != nil || n == 0 {
+		return ""
+	}
+	var wd sql.NullString
+	if s.db.QueryRow(`SELECT work_dir FROM projects WHERE slug = ?`, slug).Scan(&wd) != nil {
+		return ""
+	}
+	return wd.String
 }

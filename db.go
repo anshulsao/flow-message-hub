@@ -7,7 +7,10 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-type store struct{ db *sql.DB }
+type store struct {
+	db     *sql.DB
+	drafts *draftStore // hub-launched sessions not yet bound to a task (nil = none)
+}
 
 func openStore(path string) (*store, error) {
 	// Read-only, with a busy timeout so a concurrent flow write never
