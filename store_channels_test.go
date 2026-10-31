@@ -54,3 +54,38 @@ func TestStore_ChanTasksAndProjects(t *testing.T) {
 		t.Errorf("row mapping: %+v", a)
 	}
 }
+
+// Stock flow (Facets-cloud/flow) has no soft-delete: projects/tasks lack
+// deleted_at. Reads must still work, filtering on archived_at alone.
+func TestStore_NoDeletedAtColumn(t *testing.T) {
+	st, err := openStore(seedDBWith(t,
+		`ALTER TABLE projects DROP COLUMN deleted_at`,
+		`ALTER TABLE tasks DROP COLUMN deleted_at`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ps, err := st.projects()
+	if err != nil || len(ps) != 1 || ps[0].Slug != "fampay" {
+		t.Fatalf("projects: %+v %v", ps, err)
+	}
+	ts, err := st.chanTasks()
+	if err != nil || len(ts) != 1 || ts[0].Slug != "a" {
+		t.Fatalf("chanTasks: %+v %v", ts, err)
+	}
+}
+
+// When deleted_at exists, soft-deleted rows stay hidden.
+func TestStore_DeletedAtFiltered(t *testing.T) {
+	st, err := openStore(seedDBWith(t,
+		`INSERT INTO projects VALUES ('del','Del','active',NULL,'2026-02-01')`,
+		`INSERT INTO tasks VALUES ('d','D',NULL,'in-progress','low',NULL,NULL,NULL,NULL,'x','x',NULL,NULL,'2026-02-01')`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ps, err := st.projects(); err != nil || len(ps) != 1 {
+		t.Fatalf("deleted project should be skipped: %+v %v", ps, err)
+	}
+	if ts, err := st.chanTasks(); err != nil || len(ts) != 1 {
+		t.Fatalf("deleted task should be skipped: %+v %v", ts, err)
+	}
+}

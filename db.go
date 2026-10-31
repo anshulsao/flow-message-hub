@@ -98,7 +98,7 @@ func (s *store) tasks() (map[string]taskMeta, error) {
 		       COALESCE(session_id,''), COALESCE(auto_run_status,''),
 		       COALESCE(auto_run_pid,0)
 		FROM tasks
-		WHERE archived_at IS NULL AND deleted_at IS NULL`)
+		WHERE ` + s.liveFilter("tasks"))
 	if err != nil {
 		return nil, err
 	}
@@ -117,4 +117,14 @@ func (s *store) tasks() (map[string]taskMeta, error) {
 		}
 	}
 	return out, rows.Err()
+}
+
+// liveFilter is the WHERE clause hiding archived (and, on flow builds with
+// soft-delete, deleted) rows. Older flow.db files have no deleted_at column.
+func (s *store) liveFilter(table string) string {
+	var n int
+	if s.db.QueryRow(`SELECT count(*) FROM pragma_table_info(?) WHERE name='deleted_at'`, table).Scan(&n) == nil && n > 0 {
+		return "archived_at IS NULL AND deleted_at IS NULL"
+	}
+	return "archived_at IS NULL"
 }
