@@ -4,7 +4,7 @@ import "database/sql"
 
 func (s *store) projects() ([]project, error) {
 	rows, err := s.db.Query(`SELECT slug, name FROM projects
-		WHERE archived_at IS NULL AND deleted_at IS NULL ORDER BY slug`)
+		WHERE ` + s.liveFilter("projects") + ` ORDER BY slug`)
 	if err != nil {
 		return nil, err
 	}
@@ -34,7 +34,7 @@ func (s *store) chanTasks() ([]chanTask, error) {
 		       COALESCE(created_at,''), COALESCE(updated_at,''), COALESCE(session_id,''),
 		       ` + parentCol + `
 		FROM tasks
-		WHERE archived_at IS NULL AND deleted_at IS NULL`)
+		WHERE ` + s.liveFilter("tasks"))
 	if err != nil {
 		return nil, err
 	}
