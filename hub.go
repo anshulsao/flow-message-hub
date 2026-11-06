@@ -17,6 +17,23 @@ type rawMessage struct {
 	Status       string // pending | delivered | acked
 	WaitedS      float64
 	HasWaited    bool
+
+	// mail-model columns (flow alpha.33+); HasMail=false on older schemas,
+	// where "unread" falls back to status=='pending'.
+	HasMail    bool
+	SeenAt     string
+	AnsweredAt string
+	Options    []string
+	ReplyTo    string
+	FYI        bool
+}
+
+// unseen reports whether human mail is still unread.
+func (m rawMessage) unseen() bool {
+	if m.HasMail {
+		return m.SeenAt == ""
+	}
+	return m.Status == "pending"
 }
 
 type rawWatch struct {

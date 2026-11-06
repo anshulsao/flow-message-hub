@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 
 	_ "modernc.org/sqlite"
@@ -26,11 +27,49 @@ func openStore(path string) (*store, error) {
 	return &store{db: db}, nil
 }
 
+// busColumns returns the set of column names in bus_messages, so we can
+// read newer columns while tolerating older flow schemas.
+func (s *store) busColumns() (map[string]bool, error) {
+	rows, err := s.db.Query(`PRAGMA table_info(bus_messages)`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	cols := map[string]bool{}
+	for rows.Next() {
+		var cid, notnull, pk int
+		var name, typ string
+		var dflt sql.NullString
+		if err := rows.Scan(&cid, &name, &typ, &notnull, &dflt, &pk); err != nil {
+			return nil, err
+		}
+		cols[name] = true
+	}
+	return cols, rows.Err()
+}
+
 func (s *store) messages() ([]rawMessage, error) {
+	cols, err := s.busColumns()
+	if err != nil {
+		return nil, err
+	}
+	text := func(c string) string {
+		if cols[c] {
+			return "COALESCE(" + c + ",'')"
+		}
+		return "''"
+	}
+	fyi := "0"
+	if cols["fyi"] {
+		fyi = "COALESCE(fyi,0)"
+	}
+	hasMail := cols["seen_at"]
 	rows, err := s.db.Query(`
 		SELECT id, created_at, kind, from_assignee,
 		       COALESCE(from_task_slug,''), to_assignee,
-		       COALESCE(to_task_slug,''), body, urgent, status, waited_s
+		       COALESCE(to_task_slug,''), body, urgent, status, waited_s,
+		       ` + text("seen_at") + `, ` + text("answered_at") + `, ` + text("options") + `,
+		       ` + text("reply_to") + `, ` + fyi + `
 		FROM bus_messages
 		ORDER BY created_at`)
 	if err != nil {
@@ -40,14 +79,21 @@ func (s *store) messages() ([]rawMessage, error) {
 	var out []rawMessage
 	for rows.Next() {
 		var m rawMessage
-		var urgent int
+		var urgent, fyiN int
 		var waited sql.NullFloat64
+		var opts string
 		if err := rows.Scan(&m.ID, &m.CreatedAt, &m.Kind, &m.FromAssignee,
 			&m.FromTaskSlug, &m.ToAssignee, &m.ToTaskSlug, &m.Body,
-			&urgent, &m.Status, &waited); err != nil {
+			&urgent, &m.Status, &waited,
+			&m.SeenAt, &m.AnsweredAt, &opts, &m.ReplyTo, &fyiN); err != nil {
 			return nil, err
 		}
 		m.Urgent = urgent != 0
+		m.FYI = fyiN != 0
+		m.HasMail = hasMail
+		if opts != "" {
+			_ = json.Unmarshal([]byte(opts), &m.Options) // malformed → no options
+		}
 		if waited.Valid {
 			m.WaitedS = waited.Float64
 			m.HasWaited = true

@@ -43,7 +43,14 @@ func main() {
 	log.Printf("reading bus from %s (read-only)", *dbPath)
 
 	fx := newFlowExec()
+	flowRoot := filepath.Dir(*dbPath)
+	fx.root = flowRoot
+	secret := newConnectorSecret(flowRoot) // flowhub connector secret, read per write
+	pings := newPingSet(200)
 	mux := http.NewServeMux()
+
+	// flow → hub: connector/flowhub/run send POSTs each pinged ask here.
+	mux.HandleFunc("/api/connector/ask", connectorAskHandler(pings))
 
 	// Live DM inbox derived from the bus (human-directed threads).
 	mux.HandleFunc("/api/inbox", func(w http.ResponseWriter, r *http.Request) {
@@ -57,7 +64,10 @@ func main() {
 			httpErr(w, err)
 			return
 		}
-		writeJSON(w, buildInbox(msgs, tasks))
+		v := buildInbox(msgs, tasks)
+		v.Connector = secret.Get() != ""
+		v.Pinged = pings.list()
+		writeJSON(w, v)
 	})
 
 	// Agents you can start a conversation with = live (in-progress) sessions.
@@ -101,15 +111,12 @@ func main() {
 				IDs []string `json:"ids"`
 			}
 			_ = json.NewDecoder(r.Body).Decode(&body)
-			var acked []string
-			for _, id := range body.IDs {
-				if err := fx.Ack(id); err != nil {
-					httpErr(w, err)
-					return
-				}
-				acked = append(acked, id)
+			seen, hint, err := threadSeen(fx, secret.Get(), body.IDs)
+			if err != nil {
+				httpErr(w, err)
+				return
 			}
-			writeJSON(w, map[string]any{"ok": true, "acked": acked})
+			writeJSON(w, map[string]any{"ok": true, "seen": seen, "hint": hint})
 		case "reply":
 			var body struct {
 				Text string `json:"text"`
@@ -118,11 +125,24 @@ func main() {
 				httpErr(w, err)
 				return
 			}
-			if err := fx.Reply(task, body.Text); err != nil {
+			// Re-derive the thread server-side to find the ask to answer.
+			var th *InboxThread
+			if msgs, err := st.messages(); err == nil {
+				if tasks, err := st.tasks(); err == nil {
+					v := buildInbox(msgs, tasks)
+					for i := range v.Threads {
+						if v.Threads[i].Task == task {
+							th = &v.Threads[i]
+						}
+					}
+				}
+			}
+			via, err := threadReply(fx, secret.Get(), th, task, body.Text)
+			if err != nil {
 				httpErr(w, err)
 				return
 			}
-			writeJSON(w, map[string]any{"ok": true})
+			writeJSON(w, map[string]any{"ok": true, "via": via})
 		default:
 			http.NotFound(w, r)
 		}
