@@ -25,9 +25,9 @@ type rawWatch struct {
 }
 
 type rawNudge struct {
-	TaskSlug  string
-	Attempts  int
-	NudgedAt  string
+	TaskSlug string
+	Attempts int
+	NudgedAt string
 }
 
 // taskMeta enriches a session node with its human-readable name + status.
@@ -38,6 +38,7 @@ type taskMeta struct {
 	SessionID       string // harness session id; live if present in a running process
 	AutoRunStatus   string // running|dead|completed for --auto tasks ("" = never an auto run)
 	AutoRunPID      int    // pid of the background --auto run, 0 if none
+	Project         string // project slug, "" for a floating task
 }
 
 // runState folds a task's nominal status together with real-process liveness
@@ -78,8 +79,11 @@ type Node struct {
 	Label  string `json:"label"`  // short display label
 	Name   string `json:"name"`   // full task name (sessions only)
 	Status string `json:"status"` // task status (sessions only)
-	Nudge  int    `json:"nudge"`  // pending nudge attempts, 0 if none
-	DeadAt string `json:"dead_at,omitempty"` // when a done session finished (drives stale-hiding)
+	// Project is the task's project slug ("" = floating). Drives the graph's
+	// project filter. Sessions only.
+	Project string `json:"project,omitempty"`
+	Nudge   int    `json:"nudge"`             // pending nudge attempts, 0 if none
+	DeadAt  string `json:"dead_at,omitempty"` // when a done session finished (drives stale-hiding)
 	// RunState is the real liveness the board paints by: live | idle | crashed
 	// | done | backlog. Empty for non-session nodes (the human, targets).
 	// Unlike Status, it reflects whether a process is actually running.
@@ -214,6 +218,7 @@ func buildHub(msgs []rawMessage, watches []rawWatch, nudges []rawNudge, tasks ma
 			n.Kind = "session"
 			n.Name = tasks[id].Name
 			n.Status = tasks[id].Status
+			n.Project = tasks[id].Project
 			n.Nudge = nudgeBy[id]
 			if tasks[id].Status == "done" {
 				n.DeadAt = tasks[id].StatusChangedAt

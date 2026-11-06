@@ -156,3 +156,27 @@ func TestBuildHub_BroadcastNotAnEdge(t *testing.T) {
 		t.Fatalf("broadcast should not be a directed edge: %+v", h.Messages)
 	}
 }
+
+// Session nodes carry their task's project so the graph can filter by it;
+// floating tasks and non-session nodes carry none.
+func TestBuildHub_SessionCarriesProject(t *testing.T) {
+	msgs := []rawMessage{
+		{ID: "m1", Kind: "message", FromAssignee: "self", FromTaskSlug: "in-proj", ToAssignee: "self", ToTaskSlug: "floating", Body: "hi"},
+		{ID: "m2", Kind: "message", FromAssignee: "self", FromTaskSlug: "floating", ToAssignee: "someone-else", Body: "yo"},
+	}
+	tasks := map[string]taskMeta{
+		"in-proj":  {Name: "In a project", Status: "in-progress", Project: "cp-go-migration"},
+		"floating": {Name: "No project", Status: "in-progress"},
+	}
+	h := buildHub(msgs, nil, nil, tasks, "now")
+
+	if n := findNode(h, "in-proj"); n == nil || n.Project != "cp-go-migration" {
+		t.Fatalf("project not carried: %+v", n)
+	}
+	if n := findNode(h, "floating"); n == nil || n.Project != "" {
+		t.Fatalf("floating task got a project: %+v", n)
+	}
+	if n := findNode(h, "user"); n == nil || n.Project != "" {
+		t.Fatalf("human got a project: %+v", n)
+	}
+}
