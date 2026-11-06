@@ -137,6 +137,16 @@ func (s *store) nudges() ([]rawNudge, error) {
 	return out, rows.Err()
 }
 
+// liveRows is the WHERE clause for non-archived, non-deleted rows of table.
+// deleted_at isn't in every flow schema (a fresh stock `flow init` lacks it).
+func (s *store) liveRows(table string) string {
+	var n int
+	if s.db.QueryRow(`SELECT count(*) FROM pragma_table_info(?) WHERE name='deleted_at'`, table).Scan(&n) == nil && n > 0 {
+		return "archived_at IS NULL AND deleted_at IS NULL"
+	}
+	return "archived_at IS NULL"
+}
+
 // taskMeta for any slug referenced on the bus (name + status enrichment).
 func (s *store) tasks() (map[string]taskMeta, error) {
 	rows, err := s.db.Query(`
@@ -144,7 +154,7 @@ func (s *store) tasks() (map[string]taskMeta, error) {
 		       COALESCE(session_id,''), COALESCE(auto_run_status,''),
 		       COALESCE(auto_run_pid,0), COALESCE(project_slug,'')
 		FROM tasks
-		WHERE archived_at IS NULL AND deleted_at IS NULL`)
+		WHERE ` + s.liveRows("tasks"))
 	if err != nil {
 		return nil, err
 	}

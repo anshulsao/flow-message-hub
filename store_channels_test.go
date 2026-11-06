@@ -54,3 +54,39 @@ func TestStore_ChanTasksAndProjects(t *testing.T) {
 		t.Errorf("row mapping: %+v", a)
 	}
 }
+
+// A fresh `flow init` home (stock flow) has no deleted_at column on tasks /
+// projects; the hub must still read it.
+func TestStore_NoDeletedAtColumn(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "flow.db")
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range []string{
+		`CREATE TABLE projects (slug TEXT, name TEXT, status TEXT, archived_at TEXT)`,
+		`CREATE TABLE tasks (slug TEXT, name TEXT, project_slug TEXT, status TEXT, priority TEXT,
+			waiting_on TEXT, auto_run_status TEXT, auto_run_pid INTEGER, auto_run_started TEXT, auto_run_finished TEXT,
+			status_changed_at TEXT, created_at TEXT, updated_at TEXT, session_id TEXT, archived_at TEXT)`,
+		`INSERT INTO projects VALUES ('p','P','active',NULL)`,
+		`INSERT INTO tasks (slug,name,status) VALUES ('a','A','in-progress')`,
+	} {
+		if _, err := db.Exec(q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	db.Close()
+	st, err := openStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m, err := st.tasks(); err != nil || m["a"].Name != "A" {
+		t.Fatalf("tasks: %v %v", m, err)
+	}
+	if ts, err := st.chanTasks(); err != nil || len(ts) != 1 {
+		t.Fatalf("chanTasks: %v %v", ts, err)
+	}
+	if ps, err := st.projects(); err != nil || len(ps) != 1 {
+		t.Fatalf("projects: %v %v", ps, err)
+	}
+}

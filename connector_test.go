@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // The hub must find the flowhub connector's secret exactly where flow's
@@ -254,5 +255,29 @@ func TestFlowExec_NotAConnectorIsTypedAndTokenFree(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), "s3cr3t") {
 		t.Fatal("token in error string")
+	}
+}
+
+// /api/inbox polls every ~2s; Present() must not exec `security` each time.
+// Writes keep using the fresh Get().
+func TestConnectorSecret_PresentIsCached(t *testing.T) {
+	calls := 0
+	now := time.Unix(1000, 0)
+	cs := &connectorSecret{root: t.TempDir(), now: func() time.Time { return now },
+		keychainGet: func(string, string) (string, error) { calls++; return "s", nil }}
+	if !cs.Present() || !cs.Present() || !cs.Present() {
+		t.Fatal("want present")
+	}
+	if calls != 1 {
+		t.Fatalf("Present looked up %d times within the TTL, want 1", calls)
+	}
+	now = now.Add(31 * time.Second)
+	cs.Present()
+	if calls != 2 {
+		t.Fatalf("after TTL want a refresh, calls=%d", calls)
+	}
+	cs.Get()
+	if calls != 3 {
+		t.Fatalf("Get must always read fresh, calls=%d", calls)
 	}
 }

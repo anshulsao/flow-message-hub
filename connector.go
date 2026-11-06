@@ -23,6 +23,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"time"
 )
 
 const connectorName = "flowhub"
@@ -61,6 +62,34 @@ func securityKeychainGet(service, account string) (string, error) {
 type connectorSecret struct {
 	root        string
 	keychainGet func(service, account string) (string, error)
+	now         func() time.Time // test hook; nil = time.Now
+
+	mu        sync.Mutex
+	presentAt time.Time // when present was last refreshed
+	present   bool
+}
+
+// presentTTL bounds how stale the UI's "connector installed" flag may be.
+const presentTTL = 30 * time.Second
+
+// Present reports whether the connector is installed, cached for
+// presentTTL so the 2s /api/inbox poll doesn't exec security(1) each time.
+// Writes still call Get() for a fresh read.
+func (c *connectorSecret) Present() bool {
+	if c == nil {
+		return false
+	}
+	now := time.Now
+	if c.now != nil {
+		now = c.now
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.presentAt.IsZero() || now().Sub(c.presentAt) >= presentTTL {
+		c.present = c.Get() != ""
+		c.presentAt = now()
+	}
+	return c.present
 }
 
 func newConnectorSecret(root string) *connectorSecret {

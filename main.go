@@ -65,7 +65,7 @@ func main() {
 			return
 		}
 		v := buildInbox(msgs, tasks)
-		v.Connector = secret.Get() != ""
+		v.Connector = secret.Present()
 		v.Pinged = pings.list()
 		writeJSON(w, v)
 	})
