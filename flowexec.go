@@ -12,7 +12,10 @@ import (
 // flowExec runs the `flow` CLI for the two mutations the inbox needs. All
 // writes to the bus go through flow (never through our read-only db handle),
 // so flow stays the single owner of its own state.
-type flowExec struct{ bin string }
+type flowExec struct {
+	bin  string
+	root string // flow home the hub reads; exported as FLOW_ROOT when the env lacks it
+}
 
 func newFlowExec() *flowExec {
 	bin := os.Getenv("FLOW_BIN")
@@ -22,11 +25,21 @@ func newFlowExec() *flowExec {
 	return &flowExec{bin: bin}
 }
 
+// env is hubEnv plus FLOW_ROOT (when the hub knows its root and the caller
+// didn't set one) plus any extra vars.
+func (f *flowExec) env(extra ...string) []string {
+	env := hubEnv(os.Environ())
+	if f.root != "" && os.Getenv("FLOW_ROOT") == "" {
+		env = append(env, "FLOW_ROOT="+f.root)
+	}
+	return append(env, extra...)
+}
+
 func (f *flowExec) run(args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, f.bin, args...)
-	cmd.Env = hubEnv(cmd.Environ())
+	cmd.Env = f.env()
 	b, err := cmd.CombinedOutput()
 	s := strings.TrimSpace(string(b))
 	if err != nil {
@@ -41,7 +54,7 @@ func (f *flowExec) runBig(args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, f.bin, args...)
-	cmd.Env = hubEnv(cmd.Environ())
+	cmd.Env = f.env()
 	b, err := cmd.CombinedOutput()
 	s := string(b)
 	if err != nil {
@@ -60,11 +73,34 @@ func humanAddr() string {
 	return "user"
 }
 
-// Ack marks a specific pending inbound message answered (stops escalation).
-// This is the "seen" write in the pop-on-seen model.
-func (f *flowExec) Ack(id string) error {
-	_, err := f.run("inbox", "ack", id, "--as", humanAddr())
-	return err
+// runHuman runs `flow human <args>` as the flowhub connector. The secret
+// travels only in FLOW_CONNECTOR_TOKEN — never argv, never the error.
+func (f *flowExec) runHuman(tok string, args ...string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, f.bin, append([]string{"human"}, args...)...)
+	cmd.Env = f.env("FLOW_CONNECTOR_TOKEN=" + tok)
+	b, err := cmd.CombinedOutput()
+	out := strings.ReplaceAll(strings.TrimSpace(string(b)), tok, "<redacted>")
+	if err != nil {
+		if strings.Contains(out, "not a connector") {
+			return errNotConnector
+		}
+		return fmt.Errorf("flow human %s: %v: %s", args[0], err, out)
+	}
+	return nil
+}
+
+// HumanSeen marks human mail seen (`flow human seen <id>`).
+func (f *flowExec) HumanSeen(tok, id string) error { return f.runHuman(tok, "seen", id) }
+
+// HumanReply answers an ask (`flow human reply <id> "<text>"`): flow marks
+// it answered and delivers text to the asking task with reply_to=<id>.
+func (f *flowExec) HumanReply(tok, id, text string) error {
+	if strings.TrimSpace(text) == "" {
+		return fmt.Errorf("empty reply")
+	}
+	return f.runHuman(tok, "reply", id, text)
 }
 
 // envWithoutFlowTerm returns the current environment minus FLOW_TERM, which
@@ -108,7 +144,7 @@ func (f *flowExec) RunAuto(taskSlug string, fresh bool) error {
 		args = append(args, "--fresh")
 	}
 	cmd := exec.Command(f.bin, args...)
-	cmd.Env = hubEnv(os.Environ())
+	cmd.Env = f.env()
 	// Detach from our stdio; flow's own log captures the run's output.
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = nil, nil, nil
 	if err := cmd.Start(); err != nil {
