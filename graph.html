@@ -88,6 +88,11 @@
   .tbtn:hover{color:var(--ink);border-color:var(--session);}
   #showall{width:auto;padding:0 10px;gap:5px;font-family:"IBM Plex Mono",monospace;font-size:11px;white-space:nowrap;}
   #showall.on{color:var(--ink);border-color:var(--session);}
+  #projfilter{height:32px;max-width:200px;padding:0 8px;border-radius:8px;cursor:pointer;
+    background:var(--panel-2);border:1px solid var(--panel-line);color:var(--muted);
+    font:11.5px "IBM Plex Mono",monospace;}
+  #projfilter:hover,#projfilter:focus{color:var(--ink);border-color:var(--session);outline:none;}
+  #projfilter.on{color:var(--ink);border-color:var(--session);}
   #launch{width:auto;padding:0 10px;gap:5px;font-family:"IBM Plex Mono",monospace;font-size:11px;white-space:nowrap;}
   #launch.on{color:var(--ink);border-color:var(--crashed);}
   /* launcher popover */
@@ -248,30 +253,27 @@
   .feed-list::-webkit-scrollbar{width:8px;}
   .feed-list::-webkit-scrollbar-thumb{background:var(--panel-line);border-radius:4px;}
 
-  .card{position:relative;padding:11px 13px 11px 15px;border-radius:11px;background:var(--panel);
-    border:1px solid var(--panel-line);box-shadow:var(--shadow);}
-  .card::before{content:"";position:absolute;left:0;top:10px;bottom:10px;width:3px;border-radius:3px;background:var(--wire);}
-  .card.acked::before{background:var(--acked);}
-  .card.delivered::before{background:var(--delivered);}
-  .card.pending::before{background:var(--wait);}
-  .card.urgent::before{background:var(--urgent);}
-  .card.new{animation:cardIn .5s cubic-bezier(.2,.8,.2,1);}
-  @keyframes cardIn{from{opacity:0;transform:translateX(18px) scale(.98);}to{opacity:1;transform:none;}}
-  .card.flash{animation:cardFlash 1.1s ease-out;}
-  @keyframes cardFlash{0%{box-shadow:0 0 0 2px var(--wait-glow),var(--shadow);}100%{box-shadow:var(--shadow);}}
-  .c-route{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-family:"IBM Plex Mono",monospace;font-size:11.5px;margin-bottom:6px;}
-  .c-node{padding:2px 7px;border-radius:6px;background:color-mix(in srgb,var(--session) 15%,transparent);color:var(--session);}
-  .c-node.you{background:color-mix(in srgb,var(--hub) 18%,transparent);color:var(--hub);}
-  .c-arrow{color:var(--faint);}
-  .c-time{margin-left:auto;color:var(--faint);}
-  .c-body{font-size:12.5px;line-height:1.45;color:var(--ink);opacity:.92;}
-  .c-foot{margin-top:7px;display:flex;align-items:center;gap:8px;}
-  .pill{font-family:"IBM Plex Mono",monospace;font-size:10px;font-weight:600;padding:2px 8px;border-radius:999px;letter-spacing:.03em;text-transform:uppercase;}
-  .pill.acked{color:var(--acked);background:color-mix(in srgb,var(--acked) 16%,transparent);}
-  .pill.delivered{color:var(--delivered);background:color-mix(in srgb,var(--delivered) 18%,transparent);}
-  .pill.pending{color:var(--wait);background:color-mix(in srgb,var(--wait) 18%,transparent);}
-  .pill.urgent{color:var(--urgent);background:color-mix(in srgb,var(--urgent) 18%,transparent);}
-  .c-wait{font-family:"IBM Plex Mono",monospace;font-size:10.5px;color:var(--faint);}
+  /* chatter: chat-style stream, oldest at top */
+  .feed-list.chatter{gap:0;padding:10px 6px 14px;}
+  .ch-row{display:grid;grid-template-columns:30px 1fr;column-gap:9px;padding:3px 8px;border-radius:8px;}
+  .ch-row:hover{background:color-mix(in srgb,var(--panel) 70%,transparent);}
+  .ch-row.head{margin-top:10px;}
+  .ch-row.new{animation:chatIn .45s cubic-bezier(.2,.8,.2,1);}
+  @keyframes chatIn{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:none;}}
+  .ch-av{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;align-self:start;
+    font:700 12px "IBM Plex Mono",monospace;color:#fff;text-transform:uppercase;}
+  .ch-row:not(.head) .ch-av{visibility:hidden;height:0;}
+  .ch-meta{display:flex;align-items:baseline;gap:7px;flex-wrap:wrap;font-size:11.5px;line-height:1.3;min-width:0;}
+  .ch-from{font-weight:700;color:var(--ink);font-family:"IBM Plex Mono",monospace;font-size:12px;}
+  .ch-from.link{cursor:pointer;}
+  .ch-from.link:hover{text-decoration:underline;color:var(--session);}
+  .ch-to{color:var(--faint);font-family:"IBM Plex Mono",monospace;font-size:11px;overflow:hidden;text-overflow:ellipsis;}
+  .ch-time{margin-left:auto;color:var(--faint);font-family:"IBM Plex Mono",monospace;font-size:10.5px;white-space:nowrap;}
+  .ch-body{font-size:12.8px;line-height:1.45;color:var(--ink);opacity:.92;white-space:pre-wrap;word-break:break-word;margin-top:1px;}
+  .ch-sub{display:flex;align-items:baseline;gap:7px;margin-top:2px;}
+  .ch-tag{font:600 9.5px "IBM Plex Mono",monospace;padding:1px 7px;border-radius:999px;letter-spacing:.04em;text-transform:uppercase;white-space:nowrap;}
+  .ch-tag.wait{color:var(--wait);background:color-mix(in srgb,var(--wait) 18%,transparent);}
+  .ch-tag.urgent{color:var(--urgent);background:color-mix(in srgb,var(--urgent) 18%,transparent);}
   .feed-empty{color:var(--faint);text-align:center;padding:40px 20px;font-family:"IBM Plex Mono",monospace;font-size:12px;}
 
   /* ---------------- tabs + inbox ---------------- */
@@ -349,7 +351,7 @@
   }
   @media (prefers-reduced-motion:reduce){
     .logo::after,.beacon{animation:none;}
-    .card.new,.card.flash{animation:none;}
+    .ch-row.new{animation:none;}
   }
 </style>
 </head>
@@ -367,6 +369,7 @@
     <div class="status">
       <div class="conn"><span class="beacon" id="beacon"></span><span id="conn" class="mono">connecting…</span></div>
       <button class="tbtn" id="launch" title="Start a backlog task or restart a crashed run headlessly">▷ run</button>
+      <select id="projfilter" title="Scope the graph and chatter to one project"><option value="">All projects</option></select>
       <button class="tbtn" id="showall" title="Show sessions that finished more than 3 days ago" hidden></button>
       <button class="tbtn" id="theme" title="Toggle theme">◐</button>
     </div>
@@ -423,11 +426,11 @@
 
     <div class="feed">
       <div class="panel-tabs">
-        <button class="tab active" data-tab="feed"><span class="live-dot"></span> Feed <span class="c" id="feedcount">0</span></button>
+        <button class="tab active" data-tab="feed"><span class="live-dot"></span> Chatter <span class="c" id="feedcount">0</span></button>
         <button class="tab" data-tab="inbox">Inbox <span class="badge calm" id="inboxbadge" hidden>0</span></button>
       </div>
       <div class="panel-body">
-        <div class="feed-list" id="feed"></div>
+        <div class="feed-list chatter" id="feed"></div>
         <div class="inbox" id="inbox" hidden></div>
       </div>
     </div>
@@ -492,6 +495,34 @@
   function staleDead(n){ return isDead(n) && ageDays(n.dead_at) > STALE_DAYS; }
   let showAll = (()=>{ try{ return localStorage.getItem("flowhub-showall")==="1"; }catch(e){ return false; } })();
   let lastHub = null;
+  // project filter: "" = all projects, FLOATING = tasks with no project,
+  // else a project slug. Persisted like the stale toggle.
+  const FLOATING = "_floating";
+  let projFilter = (()=>{ try{ return localStorage.getItem("flowhub-project")||""; }catch(e){ return ""; } })();
+  let lastKeep = null;   // Set of node ids kept by the project filter (null = all)
+  let viewStats = null;  // chip counts for the current filter
+  function inProject(n){ return projFilter===FLOATING ? !n.project : n.project===projFilter; }
+  // keptIds decides which nodes survive the project filter: the project's
+  // sessions, the human, a target named after the project, and any
+  // non-session target directly wired (message/watch/broadcast) to a kept
+  // session. Returns null when no filter is active.
+  function keptIds(hub){
+    if(!projFilter) return null;
+    const kind=new Map(hub.nodes.map(n=>[n.id,n.kind]));
+    const keep=new Set(["user"]);
+    hub.nodes.forEach(n=>{
+      if(n.kind==="session" ? inProject(n) : (n.kind!=="human" && n.id===projFilter)) keep.add(n.id);
+    });
+    const sess=id=>kind.get(id)==="session" && keep.has(id);
+    const isTarget=id=>{ const k=kind.get(id); return k!=="session" && k!=="human"; };
+    const wire=(a,b)=>{ if(sess(a)&&isTarget(b)) keep.add(b); if(sess(b)&&isTarget(a)) keep.add(a); };
+    const pairs=[];
+    hub.messages.forEach(m=>pairs.push([m.from,m.to]));
+    hub.watches.forEach(w=>pairs.push([w.from,w.to]));
+    (hub.broadcasts||[]).forEach(b=>(b.targets||[]).forEach(t=>pairs.push([b.from,t])));
+    pairs.forEach(([a,b])=>wire(a,b));
+    return keep;
+  }
   // runOf is the real liveness the backend computed (live|idle|crashed|done|
   // backlog), not the stale tasks.status. Falls back to status if absent.
   function runOf(n){
@@ -518,7 +549,6 @@
       default: return n.kind==="target"?.55:.7; // backlog / bare target
     }
   }
-  function statusClass(s){ return s==="acked"?"acked":(s==="pending"?"pending":"delivered"); }
   function trunc(s,n){ return s && s.length>n ? s.slice(0,n-1)+"…" : (s||""); }
 
   // ---------- data pump ----------
@@ -536,14 +566,16 @@
     // are hidden by default (not added to nodeById → their edges drop too).
     let hidden = 0;
     const present = new Set();
+    const keep = keptIds(hub); lastKeep = keep;
     hub.nodes.forEach(n=>{
+      if(keep && !keep.has(n.id)) return; // outside the chosen project
       if(!showAll && staleDead(n)){ hidden++; return; }
       present.add(n.id);
       let o = nodeById.get(n.id);
       if(!o){
         o = Object.assign({}, n, {x:W/2+(Math.random()-.5)*160, y:H/2+(Math.random()-.5)*160});
         nodeById.set(n.id,o);
-      } else { Object.assign(o,{kind:n.kind,label:n.label,name:n.name,status:n.status,nudge:n.nudge,dead_at:n.dead_at,run_state:n.run_state,launch:n.launch}); }
+      } else { Object.assign(o,{kind:n.kind,label:n.label,name:n.name,status:n.status,nudge:n.nudge,dead_at:n.dead_at,run_state:n.run_state,launch:n.launch,project:n.project}); }
     });
     for(const id of Array.from(nodeById.keys())) if(!present.has(id)) nodeById.delete(id);
     nodes = Array.from(nodeById.values());
@@ -585,6 +617,17 @@
       const e = msgEdges.find(x=>x.id===m.id); if(e) e.burstUntil = perfNow()+2.2;
       flashNode(m.from); flashNode(m.to);
     });
+
+    // chip counts: server totals when unfiltered, else recount what's shown
+    if(!keep) viewStats = hub.stats;
+    else {
+      const ms = msgEdges;
+      viewStats = { participants:nodes.length, messages:ms.length,
+        acked:ms.filter(m=>m.status==="acked").length,
+        delivered:ms.filter(m=>m.status==="delivered").length,
+        pending:ms.filter(m=>m.status==="pending").length,
+        nudges:nodes.reduce((a,n)=>a+(n.nudge||0),0) };
+    }
 
     joinGraph();
     renderFeed(hub, fresh);
@@ -777,47 +820,93 @@
     beacon.classList.toggle("stale", !!(connErr||stale));
     conn.textContent = connErr ? "reconnecting…" : (hub? "updated "+ago(hub.generated_at) : "connecting…");
     if(!hub) return;
-    const s=hub.stats;
+    const s=viewStats||hub.stats;
     const chips=[["participants",s.participants],["messages",s.messages],["acked",s.acked,"--acked"],["delivered",s.delivered,s.delivered?"--delivered":null],["pending",s.pending,s.pending?"--wait":null],["nudges",s.nudges,s.nudges?"--nudge":null]];
     document.getElementById("chips").innerHTML = chips.map(([l,n,c])=>
       `<div class="chip"><span class="n"${c?` style="color:var(${c})"`:""}>${n}</span><span class="l">${l}</span></div>`).join("");
   }
 
+  // ---------- chatter: chat-style stream of the bus, oldest at top ----------
   const feedEl=document.getElementById("feed");
-  const rendered=new Set();
-  function renderFeed(hub, fresh){
-    document.getElementById("feedcount").textContent = hub.messages.length;
-    if(!hub.messages.length){ if(!feedEl.children.length) feedEl.innerHTML='<div class="feed-empty">bus is quiet —<br>no messages yet</div>'; return; }
-    const empty=feedEl.querySelector(".feed-empty"); if(empty) empty.remove();
-    // iterate oldest→newest and insert each new card at the TOP, so the
-    // feed ends up strict reverse-chronology (newest on top) for both the
-    // first-load batch and every later single arrival.
+  const chatSeen=new Set();
+  let chatSig=null, chatFirst=true;
+  const GROUP_S=120; // consecutive rows from one sender within 2 min collapse under one header
+  function chatItems(hub){
+    const keep=lastKeep, ok=id=>!keep||keep.has(id), items=[];
     hub.messages.forEach(m=>{
-      if(rendered.has(m.id)) { const ex=feedEl.querySelector(`[data-id="${m.id}"]`); if(ex){ const w=ex.querySelector(".c-wait"); if(w) w.textContent=waitText(m);} return; }
-      rendered.add(m.id);
-      const isNew = fresh.some(f=>f.id===m.id);
-      const toYou=m.to==="user", fromYou=m.from==="user"; // human hub canonicalized to "user"
-      const sc=m.urgent?"urgent":statusClass(m.status);
-      const el=document.createElement("div");
-      el.className="card "+sc+(isNew?" new flash":"");
-      el.dataset.id=m.id;
-      el.innerHTML=
-        `<div class="c-route"><span class="c-node ${fromYou?"you":""}">${fromYou?"you":m.from}</span><span class="c-arrow">→</span>`+
-        `<span class="c-node ${toYou?"you":""}">${toYou?"you":m.to}</span><span class="c-time mono">${ago(m.at)}</span></div>`+
-        `<div class="c-body">${esc(m.body)}</div>`+
-        `<div class="c-foot"><span class="pill ${sc}">${m.urgent?"urgent":m.status}</span><span class="c-wait">${waitText(m)}</span></div>`;
-      // insert in correct chronological slot (newest at top)
-      feedEl.insertBefore(el, feedEl.firstChild);
+      if(!ok(m.from)||!ok(m.to)) return;
+      items.push({key:"m:"+m.id, from:m.from, to:m.to, body:m.body, at:m.at,
+        waitYou: m.to==="user" && m.status==="pending", urgent:!!m.urgent});
     });
-    // trim
-    while(feedEl.children.length>60) feedEl.removeChild(feedEl.lastChild);
+    (hub.broadcasts||[]).forEach(b=>{
+      if(!ok(b.from)) return;
+      const ts=(b.targets||[]).filter(t=>t!==b.from && ok(t));
+      if(keep && !ts.length) return;
+      items.push({key:"b:"+b.from+":"+b.at, from:b.from, bcast:ts.length, body:b.body, at:b.at});
+    });
+    items.sort((a,b)=>new Date(a.at)-new Date(b.at));
+    return items.slice(-200);
   }
-  function waitText(m){
-    if(m.status==="acked") return m.waited_s ? fmtWait(m.waited_s)+" → answered" : "answered";
-    if(m.status==="delivered") return "delivered to session";
-    return "pending — awaiting you"; // human-directed, not yet answered
+  function hueOf(s){ let h=0; for(const c of s) h=(h*31+c.charCodeAt(0))>>>0; return h%360; }
+  function who(id){ return id==="user"?"you":id; }
+  function recipient(it){
+    if(it.bcast!==undefined) return `📣 broadcast to ${it.bcast} watcher${it.bcast===1?"":"s"}`;
+    return "→ "+who(it.to);
   }
-  function fmtWait(s){ if(!s||s<=0)return""; const mm=Math.floor(s/60),ss=Math.round(s%60); return mm>0?`${mm}m ${ss}s`:`${ss}s`; }
+  function renderFeed(hub){
+    const items=chatItems(hub);
+    document.getElementById("feedcount").textContent = items.length;
+    const sig=projFilter+"|"+items.map(i=>i.key+(i.waitYou?"w":"")+(i.urgent?"u":"")).join(",");
+    if(sig===chatSig){ // nothing new: just refresh relative times
+      feedEl.querySelectorAll(".ch-time[data-at]").forEach(e=>e.textContent=ago(e.dataset.at));
+      return;
+    }
+    chatSig=sig;
+    if(!items.length){
+      feedEl.innerHTML=`<div class="feed-empty">${projFilter?"no chatter in this project":"bus is quiet —<br>no messages yet"}</div>`;
+      return;
+    }
+    const near = chatFirst || feedEl.scrollHeight-feedEl.scrollTop-feedEl.clientHeight < 80;
+    const names=new Map(), sessions=new Set();
+    hub.nodes.forEach(n=>{ if(n.name) names.set(n.id,n.name); if(n.kind==="session") sessions.add(n.id); });
+    let prev=null, prevTo=null; const html=[];
+    items.forEach(it=>{
+      const head = !prev || prev.from!==it.from || (new Date(it.at)-new Date(prev.at))/1000 > GROUP_S;
+      const to=recipient(it);
+      const isNew = !chatFirst && !chatSeen.has(it.key);
+      chatSeen.add(it.key);
+      const tags=(it.urgent?'<span class="ch-tag urgent">urgent</span>':"")+(it.waitYou?'<span class="ch-tag wait">waiting on you</span>':"");
+      const fromYou=it.from==="user";
+      const av=fromYou?"var(--hub)":`hsl(${hueOf(it.from)} 55% 45%)`;
+      const title=esc(fromYou?"you (the human)":(names.get(it.from)||it.from)).replace(/"/g,"&quot;");
+      const link=sessions.has(it.from)?" link":"";
+      let row=`<div class="ch-row${head?" head":""}${isNew?" new":""}" title="${esc(new Date(it.at).toLocaleString())}">`+
+        `<div class="ch-av" style="background:${av}">${esc((fromYou?"y":it.from).charAt(0))}</div><div>`;
+      if(head){
+        row+=`<div class="ch-meta"><span class="ch-from${link}" data-slug="${esc(it.from)}" title="${title}">${esc(who(it.from))}</span>`+
+          `<span class="ch-to">${esc(to)}</span>${tags}<span class="ch-time" data-at="${esc(it.at)}">${ago(it.at)}</span></div>`;
+      } else if(to!==prevTo || tags){
+        row+=`<div class="ch-sub">${to!==prevTo?`<span class="ch-to">${esc(to)}</span>`:""}${tags}</div>`;
+      }
+      row+=`<div class="ch-body">${esc(it.body)}</div></div></div>`;
+      html.push(row); prev=it; prevTo=to;
+    });
+    feedEl.innerHTML=html.join("");
+    if(near) feedEl.scrollTop=feedEl.scrollHeight;
+    chatFirst=false;
+  }
+  feedEl.addEventListener("click",e=>{
+    const f=e.target.closest(".ch-from.link"); if(f) openChat(f.dataset.slug);
+  });
+  // openChat jumps the MAIN tab (index.html, our parent frame) to the task's
+  // chat in the Channels view. index.html listens for hashchange; no v= means
+  // channels. Opened standalone at /graph, navigate to the app root instead.
+  function openChat(slug){
+    const n=lastHub && lastHub.nodes.find(x=>x.id===slug);
+    const h="c="+encodeURIComponent((n&&n.project)||FLOATING)+"&t="+encodeURIComponent(slug);
+    try{ if(window.parent!==window){ window.parent.location.hash=h; return; } }catch(e){}
+    location.href="/#"+h;
+  }
   function ago(iso){ if(!iso)return""; const d=(Date.now()-new Date(iso).getTime())/1000; if(d<60)return `${Math.max(0,Math.round(d))}s ago`; if(d<3600)return `${Math.round(d/60)}m ago`; return `${Math.round(d/3600)}h ago`; }
   function esc(s){ return (s||"").replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); }
 
@@ -842,6 +931,7 @@
     activeTab=name;
     document.querySelectorAll(".tab").forEach(b=>b.classList.toggle("active",b.dataset.tab===name));
     feedListEl.hidden = name!=="feed";
+    if(name==="feed") feedListEl.scrollTop=feedListEl.scrollHeight;
     inboxEl.hidden = name!=="inbox";
     if(name==="inbox"){ lastSig=""; renderInbox(); }
   }
@@ -849,10 +939,10 @@
   function onNodeClick(d,ev){
     closeNodeMenu();
     if(d.id==="user"){ switchTab("inbox"); return; }
+    // sessions: the menu (Open chat first, then transcript / thread / run actions)
+    if(d.kind==="session"){ openNodeMenu(d,ev); return; }
     const th=inboxData && inboxData.threads.find(t=>t.task===d.id);
-    if(th){ switchTab("inbox"); openThread(d.id); return; }
-    // no thread: offer the node's actions (restart / start / mark done)
-    if(d.kind==="session") openNodeMenu(d,ev);
+    if(th){ switchTab("inbox"); openThread(d.id); }
   }
 
   // ---------- node context menu ----------
@@ -864,6 +954,7 @@
       items.push({ic:"✉",label:"Open inbox",cls:"",fn:()=>switchTab("inbox")});
     } else {
       const live=runOf(d)==="live";
+      if(d.kind==="session") items.push({ic:"💬",label:"Open chat",sub:"main tab",cls:"",fn:()=>openChat(d.id)});
       items.push({ic:"⧉",label:live?"Watch session":"View transcript",sub:live?"live":"",cls:"",fn:()=>openTranscript(d.id)});
       if(hasThread(d.id)) items.push({ic:"✉",label:"Open thread",cls:"",fn:()=>{switchTab("inbox");openThread(d.id);}});
       if(d.launch==="restart") items.push({ic:"↻",label:"Restart run",sub:"--auto --fresh",cls:"restart",fn:()=>launchTask(d.id,"restart")});
@@ -1073,6 +1164,30 @@
     try{ localStorage.setItem("flowhub-showall", showAll?"1":"0"); }catch(e){}
     if(lastHub) apply(lastHub); // re-filter with existing data; positions preserved
   };
+
+  // ---------- project filter ----------
+  const projSel=document.getElementById("projfilter");
+  function paintProjFilter(projects){
+    const opts=[["","All projects"]].concat(projects.map(p=>[p.slug,p.name||p.slug]),[[FLOATING,"No project"]]);
+    // keep a persisted choice selectable even if the project list lacks it
+    if(projFilter && !opts.some(o=>o[0]===projFilter)) opts.splice(opts.length-1,0,[projFilter,projFilter]);
+    projSel.innerHTML=opts.map(([v,l])=>`<option value="${esc(v).replace(/"/g,"&quot;")}">${esc(l)}</option>`).join("");
+    projSel.value=projFilter;
+    projSel.classList.toggle("on",!!projFilter);
+  }
+  function loadProjects(){
+    fetch("/api/projects",{cache:"no-store"}).then(r=>r.json()).then(ps=>{
+      if(Array.isArray(ps)) paintProjFilter(ps);
+    }).catch(()=>paintProjFilter([]));
+  }
+  projSel.onchange=()=>{
+    projFilter=projSel.value;
+    try{ localStorage.setItem("flowhub-project", projFilter); }catch(e){}
+    projSel.classList.toggle("on",!!projFilter);
+    chatFirst=true; // re-anchor the chatter at the newest row
+    if(lastHub) apply(lastHub); // re-filter with existing data; positions preserved
+  };
+  loadProjects();
 
   function resize(){ W=stageEl.clientWidth; H=stageEl.clientHeight; svg.attr("viewBox",`0 0 ${W} ${H}`);
     sim.force("center",d3.forceCenter(W/2,H/2)); sim.force("x",d3.forceX(W/2).strength(.06)); sim.force("y",d3.forceY(H/2).strength(.06)); sim.alpha(.3).restart(); }
