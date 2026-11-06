@@ -26,17 +26,7 @@ func (f *flowExec) run(args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, f.bin, args...)
-	// FLOW_TERM=bg trips guards on some flow subcommands; strip it for our
-	// one-shot message/ack calls.
-	env := cmd.Environ()
-	out := env[:0]
-	for _, e := range env {
-		if strings.HasPrefix(e, "FLOW_TERM=") {
-			continue
-		}
-		out = append(out, e)
-	}
-	cmd.Env = out
+	cmd.Env = hubEnv(cmd.Environ())
 	b, err := cmd.CombinedOutput()
 	s := strings.TrimSpace(string(b))
 	if err != nil {
@@ -51,15 +41,7 @@ func (f *flowExec) runBig(args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, f.bin, args...)
-	env := cmd.Environ()
-	out := env[:0]
-	for _, e := range env {
-		if strings.HasPrefix(e, "FLOW_TERM=") {
-			continue
-		}
-		out = append(out, e)
-	}
-	cmd.Env = out
+	cmd.Env = hubEnv(cmd.Environ())
 	b, err := cmd.CombinedOutput()
 	s := string(b)
 	if err != nil {
@@ -87,12 +69,25 @@ func (f *flowExec) Ack(id string) error {
 
 // envWithoutFlowTerm returns the current environment minus FLOW_TERM, which
 // trips `--auto` (a bg flow session refuses `FLOW_TERM=bg` combined with --auto).
-func envWithoutFlowTerm() []string {
-	env := os.Environ()
-	out := env[:0]
+// hubStripEnv lists env vars the hub must not pass to flow:
+//   - FLOW_TERM=bg trips guards on some flow subcommands.
+//   - The harness session vars make flow think the hub IS the Claude/Codex
+//     session that happened to start it, so inbox replies were sent "from"
+//     that session's task (and a reply to that task was rejected as its own
+//     inbox). The hub always acts as the bare human.
+//   - FLOW_AUTO_RUN marks an autonomous run and blocks `flow auto`.
+var hubStripEnv = []string{"FLOW_TERM", "CLAUDE_CODE_SESSION_ID", "CLAUDECODE", "CODEX_THREAD_ID", "FLOW_AUTO_RUN"}
+
+// hubEnv returns env without the hubStripEnv vars. It copies, so the
+// caller's slice is left intact.
+func hubEnv(env []string) []string {
+	out := make([]string, 0, len(env))
+next:
 	for _, e := range env {
-		if strings.HasPrefix(e, "FLOW_TERM=") {
-			continue
+		for _, k := range hubStripEnv {
+			if strings.HasPrefix(e, k+"=") {
+				continue next
+			}
 		}
 		out = append(out, e)
 	}
@@ -113,7 +108,7 @@ func (f *flowExec) RunAuto(taskSlug string, fresh bool) error {
 		args = append(args, "--fresh")
 	}
 	cmd := exec.Command(f.bin, args...)
-	cmd.Env = envWithoutFlowTerm()
+	cmd.Env = hubEnv(os.Environ())
 	// Detach from our stdio; flow's own log captures the run's output.
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = nil, nil, nil
 	if err := cmd.Start(); err != nil {
