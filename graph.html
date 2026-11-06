@@ -263,12 +263,12 @@
   .ch-av{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;align-self:start;
     font:700 12px "IBM Plex Mono",monospace;color:#fff;text-transform:uppercase;}
   .ch-row:not(.head) .ch-av{visibility:hidden;height:0;}
-  .ch-meta{display:flex;align-items:baseline;gap:7px;flex-wrap:wrap;font-size:11.5px;line-height:1.3;min-width:0;}
-  .ch-from{font-weight:700;color:var(--ink);font-family:"IBM Plex Mono",monospace;font-size:12px;}
+  .ch-meta{display:flex;align-items:baseline;gap:7px;flex-wrap:nowrap;font-size:11.5px;line-height:1.3;min-width:0;}
+  .ch-from{flex:none;font-weight:700;color:var(--ink);font-family:"IBM Plex Mono",monospace;font-size:12px;}
   .ch-from.link{cursor:pointer;}
   .ch-from.link:hover{text-decoration:underline;color:var(--session);}
-  .ch-to{color:var(--faint);font-family:"IBM Plex Mono",monospace;font-size:11px;overflow:hidden;text-overflow:ellipsis;}
-  .ch-time{margin-left:auto;color:var(--faint);font-family:"IBM Plex Mono",monospace;font-size:10.5px;white-space:nowrap;}
+  .ch-to{flex:1 1 auto;min-width:0;white-space:nowrap;color:var(--faint);font-family:"IBM Plex Mono",monospace;font-size:11px;overflow:hidden;text-overflow:ellipsis;}
+  .ch-time{flex:none;margin-left:auto;color:var(--faint);font-family:"IBM Plex Mono",monospace;font-size:10.5px;white-space:nowrap;}
   .ch-body{font-size:12.8px;line-height:1.45;color:var(--ink);opacity:.92;white-space:pre-wrap;word-break:break-word;margin-top:1px;}
   .ch-sub{display:flex;align-items:baseline;gap:7px;margin-top:2px;}
   .ch-tag{font:600 9.5px "IBM Plex Mono",monospace;padding:1px 7px;border-radius:999px;letter-spacing:.04em;text-transform:uppercase;white-space:nowrap;}
@@ -369,7 +369,7 @@
     <div class="status">
       <div class="conn"><span class="beacon" id="beacon"></span><span id="conn" class="mono">connecting…</span></div>
       <button class="tbtn" id="launch" title="Start a backlog task or restart a crashed run headlessly">▷ run</button>
-      <select id="projfilter" title="Scope the graph and chatter to one project"><option value="">All projects</option></select>
+      <select id="projfilter" autocomplete="off" title="Scope the graph and chatter to one project"><option value="">All projects</option></select>
       <button class="tbtn" id="showall" title="Show sessions that finished more than 3 days ago" hidden></button>
       <button class="tbtn" id="theme" title="Toggle theme">◐</button>
     </div>
@@ -949,6 +949,7 @@
   const nodeMenuEl=document.getElementById("nodemenu");
   function hasThread(id){ return !!(inboxData && inboxData.threads.find(t=>t.task===id)); }
   function openNodeMenu(d,ev){
+    tipEl.classList.remove("on"); // the hover tip would sit behind the menu
     const items=[];
     if(d.id==="user"){
       items.push({ic:"✉",label:"Open inbox",cls:"",fn:()=>switchTab("inbox")});
