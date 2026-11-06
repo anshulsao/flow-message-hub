@@ -20,7 +20,7 @@ the `flow` CLI, never the database directly.
                                     └─ GET /             embedded single-page app (D3)
                                          │ polls every 2s
                                          ▼
-                                    force-directed graph + live feed + inbox
+                                    force-directed graph + chatter + inbox
 ```
 
 ## What you get
@@ -29,8 +29,19 @@ the `flow` CLI, never the database directly.
   sessions orbit it; finished/dead sessions are greyed with static links.
   Blue wires are messages, indigo dashed are watches, indigo dotted are
   broadcasts; a moving packet means it is live; red means urgent.
-- **Feed** — every bus signal in reverse chronological order, with delivery
-  ticks and status.
+  - **Project filter** — the topbar dropdown scopes the graph to one project
+    (or "No project" for floating tasks): that project's sessions, you, and
+    the targets wired directly to them. Edges, chips and Chatter follow the
+    filter; the choice is remembered (`localStorage` `flowhub-project`).
+  - **Open chat** — clicking a session node opens its menu; the first item,
+    💬 Open chat, switches the main tab to that task's chat in Channels.
+    Clicking your own node opens the Inbox.
+- **Chatter** — the bus as a chat stream: oldest at top, newest at the
+  bottom (auto-scrolls only if you were already at the bottom). Each row is
+  sender → recipient (or 📣 broadcast to N watchers), time, and the body;
+  consecutive messages from one sender within 2 minutes are grouped. The only
+  status shown is "waiting on you" (unanswered messages to you) and "urgent".
+  Click a sender to open their chat in the main tab.
 - **Inbox** — the agents that messaged you, as DM threads. Opening a thread
   marks it seen (pop-on-seen); you can reply, or start a new thread with any
   in-progress agent. Threads you cannot answer (a finished agent, or the

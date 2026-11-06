@@ -96,7 +96,7 @@ func (s *store) tasks() (map[string]taskMeta, error) {
 	rows, err := s.db.Query(`
 		SELECT slug, name, status, COALESCE(status_changed_at,''),
 		       COALESCE(session_id,''), COALESCE(auto_run_status,''),
-		       COALESCE(auto_run_pid,0)
+		       COALESCE(auto_run_pid,0), COALESCE(project_slug,'')
 		FROM tasks
 		WHERE archived_at IS NULL AND deleted_at IS NULL`)
 	if err != nil {
@@ -105,15 +105,16 @@ func (s *store) tasks() (map[string]taskMeta, error) {
 	defer rows.Close()
 	out := map[string]taskMeta{}
 	for rows.Next() {
-		var slug, name, status, changedAt, sessionID, autoStatus string
+		var slug, name, status, changedAt, sessionID, autoStatus, project string
 		var autoPID int
 		if err := rows.Scan(&slug, &name, &status, &changedAt,
-			&sessionID, &autoStatus, &autoPID); err != nil {
+			&sessionID, &autoStatus, &autoPID, &project); err != nil {
 			return nil, err
 		}
 		out[slug] = taskMeta{
 			Name: name, Status: status, StatusChangedAt: changedAt,
 			SessionID: sessionID, AutoRunStatus: autoStatus, AutoRunPID: autoPID,
+			Project: project,
 		}
 	}
 	return out, rows.Err()
