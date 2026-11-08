@@ -121,7 +121,7 @@ func buildInbox(msgs []rawMessage, tasks map[string]taskMeta) InboxView {
 		// else: peer→peer, ignored for the inbox
 	}
 
-	v := InboxView{}
+	v := InboxView{Threads: []InboxThread{}} // [] not null: the page calls threads.map/.find
 	for _, key := range order {
 		a := byTask[key]
 		// a thread only exists if it received at least one inbound message
