@@ -34,6 +34,7 @@ func defaultDBPath() string {
 func main() {
 	addr := flag.String("addr", "127.0.0.1:8787", "listen address")
 	dbPath := flag.String("db", defaultDBPath(), "path to flow.db")
+	liveWindow := flag.Duration("live-window", liveTabWindow, "an ask counts as delivered only if a hub tab polled /api/inbox within this window")
 	flag.Parse()
 
 	st, err := openStore(*dbPath)
@@ -47,13 +48,14 @@ func main() {
 	fx.root = flowRoot
 	secret := newConnectorSecret(flowRoot) // flowhub connector secret, read per write
 	pings := newPingSet(200)
+	ui := newUIPresence(*liveWindow) // last /api/inbox poll = "a hub tab is open"
 	mux := http.NewServeMux()
 
 	// flow → hub: connector/flowhub/run send POSTs each pinged ask here.
-	mux.HandleFunc("/api/connector/ask", connectorAskHandler(pings))
+	mux.HandleFunc("/api/connector/ask", connectorAskHandler(pings, ui))
 
 	// Live DM inbox derived from the bus (human-directed threads).
-	mux.HandleFunc("/api/inbox", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/inbox", ui.track(func(w http.ResponseWriter, r *http.Request) {
 		msgs, err := st.messages()
 		if err != nil {
 			httpErr(w, err)
@@ -68,7 +70,7 @@ func main() {
 		v.Connector = secret.Present()
 		v.Pinged = pings.list()
 		writeJSON(w, v)
-	})
+	}))
 
 	// Agents you can start a conversation with = live (in-progress) sessions.
 	mux.HandleFunc("/api/agents", func(w http.ResponseWriter, r *http.Request) {

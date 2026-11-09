@@ -2,7 +2,8 @@ package main
 
 // flowhub as a flow human connector (contract v1).
 //
-//	flow ─► connector/flowhub/run send ─► POST /api/connector/ask  (records a "ping")
+//	flow ─► connector/flowhub/run send ─► POST /api/connector/ask  (records a "ping";
+//	        503 when no hub tab polled /api/inbox recently → run exits 1 → flow falls back)
 //	hub UI reply/seen ─► FLOW_CONNECTOR_TOKEN=<secret> flow human reply|seen <id>
 //
 // The hub reads the connector secret itself, with the same lookup as
@@ -148,7 +149,13 @@ func (p *pingSet) list() []string {
 // rejected, the custom X-Flow-Connector header is required (a cross-site
 // form can't set it without a preflight we never answer), and only
 // loopback peers are accepted.
-func connectorAskHandler(p *pingSet) http.HandlerFunc {
+//
+// An ask (kind != "test") gets 200 only while a hub tab is open (ui.live);
+// otherwise 503 {"ok":false,"reason":"no open hub tab"} and nothing is
+// recorded, so run send exits 1 and flow falls back to its next connector.
+// kind "test" answers 200 whenever the hub is up, so `flow connector add`
+// works without a tab.
+func connectorAskHandler(p *pingSet, ui *uiPresence) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "POST only", http.StatusMethodNotAllowed)
@@ -167,6 +174,12 @@ func connectorAskHandler(p *pingSet) http.HandlerFunc {
 			return
 		}
 		if ask.Kind != "test" {
+			if !ui.live() {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusServiceUnavailable)
+				json.NewEncoder(w).Encode(map[string]any{"ok": false, "reason": "no open hub tab"})
+				return
+			}
 			p.add(ask.ID)
 		}
 		writeJSON(w, map[string]any{"ok": true})
@@ -231,4 +244,51 @@ func threadReply(w humanWriter, tok string, th *InboxThread, task, text string) 
 		return "", err
 	}
 	return "message", nil
+}
+
+// ---- UI presence: is a hub tab actually open? ----
+
+// liveTabWindow is how recently the UI must have polled /api/inbox for an
+// ask to count as seen-able. The Inbox polls every 2s, so 10s tolerates a
+// few missed polls. Override with -live-window.
+const liveTabWindow = 10 * time.Second
+
+// uiPresence records the last time a hub tab polled /api/inbox, so
+// /api/connector/ask only answers 200 when a human could actually see the
+// ask. Otherwise run send exits 1 and flow falls back to the next connector.
+type uiPresence struct {
+	window time.Duration
+	now    func() time.Time // test hook; nil = time.Now
+
+	mu   sync.Mutex
+	last time.Time
+}
+
+func newUIPresence(window time.Duration) *uiPresence { return &uiPresence{window: window} }
+
+func (u *uiPresence) clock() time.Time {
+	if u.now != nil {
+		return u.now()
+	}
+	return time.Now()
+}
+
+func (u *uiPresence) touch() {
+	u.mu.Lock()
+	u.last = u.clock()
+	u.mu.Unlock()
+}
+
+func (u *uiPresence) live() bool {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	return !u.last.IsZero() && u.clock().Sub(u.last) < u.window
+}
+
+// track wraps the UI poll endpoint so every poll marks a tab as open.
+func (u *uiPresence) track(h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		u.touch()
+		h(w, r)
+	}
 }
