@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -72,7 +73,7 @@ func askReq(body string, mut func(*http.Request)) *http.Request {
 
 func TestConnectorAsk_RecordsPing(t *testing.T) {
 	p := newPingSet(10)
-	h := connectorAskHandler(p)
+	h := connectorAskHandler(p, liveUI())
 	w := httptest.NewRecorder()
 	h(w, askReq(`{"id":"abc123","kind":"ask","body":"ship?","options":["Yes","No"]}`, nil))
 	if w.Code != 200 {
@@ -86,7 +87,7 @@ func TestConnectorAsk_RecordsPing(t *testing.T) {
 func TestConnectorAsk_TestKindIsOKButNotRecorded(t *testing.T) {
 	p := newPingSet(10)
 	w := httptest.NewRecorder()
-	connectorAskHandler(p)(w, askReq(`{"id":"test","kind":"test"}`, nil))
+	connectorAskHandler(p, liveUI())(w, askReq(`{"id":"test","kind":"test"}`, nil))
 	if w.Code != 200 || len(p.list()) != 0 {
 		t.Fatalf("code=%d pinged=%v", w.Code, p.list())
 	}
@@ -106,7 +107,7 @@ func TestConnectorAsk_Guards(t *testing.T) {
 			body = `{"kind":"ask"}`
 		}
 		w := httptest.NewRecorder()
-		connectorAskHandler(p)(w, askReq(body, mut))
+		connectorAskHandler(p, liveUI())(w, askReq(body, mut))
 		if w.Code < 400 {
 			t.Errorf("%s: want rejection, got %d", name, w.Code)
 		}
@@ -119,7 +120,7 @@ func TestConnectorAsk_Guards(t *testing.T) {
 	r := askReq("", nil)
 	r.Method = http.MethodGet
 	w := httptest.NewRecorder()
-	connectorAskHandler(p)(w, r)
+	connectorAskHandler(p, liveUI())(w, r)
 	if w.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("GET: %d", w.Code)
 	}
@@ -279,5 +280,89 @@ func TestConnectorSecret_PresentIsCached(t *testing.T) {
 	cs.Get()
 	if calls != 3 {
 		t.Fatalf("Get must always read fresh, calls=%d", calls)
+	}
+}
+
+// liveUI is a presence tracker that has just seen a UI poll.
+func liveUI() *uiPresence {
+	u := newUIPresence(10 * time.Second)
+	u.touch()
+	return u
+}
+
+func TestConnectorAsk_NoOpenTabIs503AndNotRecorded(t *testing.T) {
+	p := newPingSet(10)
+	u := newUIPresence(10 * time.Second) // no UI poll yet
+	w := httptest.NewRecorder()
+	connectorAskHandler(p, u)(w, askReq(`{"id":"abc","kind":"ask"}`, nil))
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("code %d, want 503", w.Code)
+	}
+	var body struct {
+		OK     bool   `json:"ok"`
+		Reason string `json:"reason"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil || body.OK || body.Reason != "no open hub tab" {
+		t.Fatalf("body = %s (err %v)", w.Body, err)
+	}
+	if len(p.list()) != 0 {
+		t.Fatalf("must not record a ping without a tab: %v", p.list())
+	}
+}
+
+func TestConnectorAsk_TabWindowExpires(t *testing.T) {
+	now := time.Unix(1000, 0)
+	u := newUIPresence(10 * time.Second)
+	u.now = func() time.Time { return now }
+	u.touch()
+	p := newPingSet(10)
+
+	now = now.Add(9 * time.Second)
+	w := httptest.NewRecorder()
+	connectorAskHandler(p, u)(w, askReq(`{"id":"a1","kind":"ask"}`, nil))
+	if w.Code != 200 {
+		t.Fatalf("within window: code %d", w.Code)
+	}
+
+	now = now.Add(2 * time.Second) // 11s since the poll
+	w = httptest.NewRecorder()
+	connectorAskHandler(p, u)(w, askReq(`{"id":"a2","kind":"ask"}`, nil))
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("after window: code %d", w.Code)
+	}
+	if got := p.list(); len(got) != 1 || got[0] != "a1" {
+		t.Fatalf("pinged = %v", got)
+	}
+}
+
+func TestConnectorAsk_TestKindOKWithoutTab(t *testing.T) {
+	p := newPingSet(10)
+	w := httptest.NewRecorder()
+	connectorAskHandler(p, newUIPresence(10*time.Second))(w, askReq(`{"id":"test","kind":"test"}`, nil))
+	if w.Code != 200 || len(p.list()) != 0 {
+		t.Fatalf("code=%d pinged=%v", w.Code, p.list())
+	}
+}
+
+func TestConnectorAsk_GuardsStillApplyWithoutTab(t *testing.T) {
+	p := newPingSet(10)
+	w := httptest.NewRecorder()
+	connectorAskHandler(p, newUIPresence(10*time.Second))(w, askReq(`{"id":"x","kind":"ask"}`,
+		func(r *http.Request) { r.Header.Set("Origin", "http://evil") }))
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("code %d, want 403", w.Code)
+	}
+}
+
+func TestUIPresence_TrackMarksLiveOnPoll(t *testing.T) {
+	u := newUIPresence(10 * time.Second)
+	if u.live() {
+		t.Fatal("live before any poll")
+	}
+	called := false
+	h := u.track(func(w http.ResponseWriter, r *http.Request) { called = true })
+	h(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/api/inbox", nil))
+	if !called || !u.live() {
+		t.Fatalf("called=%v live=%v", called, u.live())
 	}
 }
