@@ -330,6 +330,14 @@
   .thread-composer textarea:focus{outline:none;border-color:var(--session);}
   .thread-composer button{border:none;border-radius:10px;height:38px;padding:0 15px;background:var(--session);color:#04201e;font:600 12.5px "IBM Plex Sans",sans-serif;cursor:pointer;}
   .thread-composer button:disabled{opacity:.45;cursor:default;}
+  .ask-opts{display:flex;flex-wrap:wrap;gap:6px;padding:8px 10px 0;}
+  .ask-opts button{border:1px solid var(--session);border-radius:9px;padding:6px 12px;background:transparent;color:var(--session);font:600 12px "IBM Plex Sans",sans-serif;cursor:pointer;}
+  .ask-opts button:hover{background:color-mix(in srgb,var(--session) 12%,transparent);}
+  .ask-opts button:disabled{opacity:.45;cursor:default;}
+  .ask-opts .ao-hint{flex-basis:100%;font:400 10px "IBM Plex Mono",monospace;color:var(--faint);}
+  .tag-answered{color:var(--session);}
+  .conn-note{padding:4px 12px 0;font:400 10px "IBM Plex Mono",monospace;color:var(--faint);}
+  .notif-btn{margin-top:6px;padding:7px;border-radius:9px;border:1px dashed var(--panel-line);background:transparent;color:var(--faint);font:500 11px "IBM Plex Sans",sans-serif;cursor:pointer;}
   .composer-locked{border-top:1px solid var(--panel-line);padding:12px 14px;font:400 12px "IBM Plex Mono",monospace;color:var(--faint);text-align:center;}
   .tick{font-family:"IBM Plex Mono",monospace;font-weight:600;}
   .tick.sent{color:var(--faint);}
@@ -913,6 +921,9 @@
   // ---------- inbox (DM threads, pop-on-seen) ----------
   let inboxData=null, activeTab="feed", openThreadTask=null, lastSig="", composeAgents=[];
   const COMPOSE="__compose__";
+  // asks flow pinged the hub about (connector/flowhub) → browser notification
+  let notifiedPings=null; // Set of ids already handled; null until the first pull (seed silently)
+  let seenHint="";
   // WhatsApp-style ticks for YOUR outbound messages, driven by bus status:
   //   pending = sent (agent hasn't popped it)   → ✓
   //   delivered = agent's session popped it      → ✓✓
@@ -988,9 +999,24 @@
   function pullInbox(){
     fetch("/api/inbox",{cache:"no-store"}).then(r=>r.json()).then(v=>{
       if(v.error) return;
-      inboxData=v; renderInboxBadge();
+      inboxData=v; renderInboxBadge(); notifyPings(v);
       if(activeTab==="inbox") renderInbox();
     }).catch(()=>{});
+  }
+  function notifyPings(v){
+    const ids=v.pinged||[];
+    if(notifiedPings===null){ notifiedPings=new Set(ids); return; } // don't replay old pings on load
+    ids.forEach(id=>{
+      if(notifiedPings.has(id)) return;
+      notifiedPings.add(id);
+      if(!("Notification" in window) || Notification.permission!=="granted") return;
+      const th=(v.threads||[]).find(t=>(t.messages||[]).some(m=>m.id===id));
+      const m=th && th.messages.find(m=>m.id===id);
+      try{
+        const n=new Notification("flow · "+(th?th.task:"ask"),{body:m?m.body:"an agent is asking you something",tag:"flowhub-"+id});
+        n.onclick=()=>{ window.focus(); if(th){ switchTab("inbox"); openThread(th.task); } n.close(); };
+      }catch(e){}
+    });
   }
   function renderInboxBadge(){
     const u=inboxData?inboxData.unread:0, o=inboxData?inboxData.owe:0;
@@ -1001,7 +1027,7 @@
 
   function sig(){
     if(!inboxData) return "x";
-    const ts=inboxData.threads.map(t=>[t.task,t.state,t.unread,t.messages.length,t.latest_at].join(":")).join("|");
+    const ts=inboxData.threads.map(t=>[t.task,t.state,t.unread,t.messages.length,t.latest_at,t.ask_id||""].join(":")).join("|")+"/"+(inboxData.connector?1:0);
     return activeTab+"/"+(openThreadTask||"")+"/"+ts;
   }
   function renderInbox(){
@@ -1023,6 +1049,11 @@
     const list=document.createElement("div"); list.className="inbox-list";
     const nb=document.createElement("button"); nb.className="newbtn"; nb.textContent="✎  New message to an agent";
     nb.onclick=openCompose; list.appendChild(nb);
+    if("Notification" in window && Notification.permission==="default"){
+      const pb=document.createElement("button"); pb.className="notif-btn"; pb.textContent="🔔 Notify me when an agent asks (browser notifications)";
+      pb.onclick=()=>{ Notification.requestPermission().then(()=>{ lastSig=""; renderInbox(); }); };
+      list.appendChild(pb);
+    }
     if(!inboxData.threads.length){
       const e=document.createElement("div"); e.className="inbox-empty"; e.innerHTML="inbox zero 🎉<br>no agent is waiting on you"; list.appendChild(e);
     } else inboxData.threads.forEach(th=>{
@@ -1086,7 +1117,7 @@
     if(th && th.pending_ids && th.pending_ids.length){
       // pop-on-seen: ack the pending inbound ids, stop flow escalation
       fetch(`/api/threads/${encodeURIComponent(task)}/seen`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({ids:th.pending_ids})})
-        .then(()=>pullInbox()).catch(()=>{});
+        .then(r=>r.json()).then(j=>{ seenHint=(j&&j.hint)||""; pullInbox(); }).catch(()=>{});
       th.pending_ids=[]; th.unread=0; if(th.state==="unread") th.state=th.repliable?"owe-reply":"closed"; // optimistic
       renderInboxBadge();
     }
@@ -1103,7 +1134,10 @@
       const b=document.createElement("div"); b.className="bubble "+m.dir+(m.urgent?" urgent":"");
       const who=m.dir==="in"?esc(th.task):"you";
       let extra="";
-      if(m.dir==="in" && m.status==="pending") extra=' · <span class="tick sent">● new</span>';
+      if(m.dir==="in" && !m.seen) extra=' · <span class="tick sent">● new</span>';
+      if(m.dir==="in" && m.answered) extra+=' · <span class="tag-answered">✓ answered</span>';
+      if(m.dir==="in" && m.fyi) extra+=' · fyi';
+      if(m.dir==="in" && m.options && m.options.length) extra+=' · options: '+m.options.map(esc).join(" / ");
       if(m.dir==="out") extra=" · "+tick(m.status);
       b.innerHTML=`${esc(m.body)}<div class="b-meta">${who} · ${ago(m.at)}${extra}</div>`;
       msgs.appendChild(b);
@@ -1116,6 +1150,24 @@
       const send=()=>{ const t=ta.value.trim(); if(!t)return; btn.disabled=true; sendReply(th.task,t,ta,btn,msgs); };
       btn.onclick=send;
       ta.onkeydown=(e)=>{ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); send(); } };
+      const ask=th.ask_id && th.messages.find(m=>m.id===th.ask_id);
+      if(ask && ask.options && ask.options.length){
+        const ob=document.createElement("div"); ob.className="ask-opts";
+        ask.options.forEach(o=>{
+          const b=document.createElement("button"); b.textContent=o; b.title="answer: "+o+" (text in the box below is added as a note)";
+          b.onclick=()=>{ const note=ta.value.trim(); ob.querySelectorAll("button").forEach(x=>x.disabled=true);
+            sendReply(th.task, note? o+" — "+note : o, ta, btn, msgs); };
+          ob.appendChild(b);
+        });
+        const h=document.createElement("div"); h.className="ao-hint"; h.textContent="pick an answer · optional note: type it below first";
+        ob.appendChild(h);
+        wrap.appendChild(ob);
+      }
+      const cn=document.createElement("div"); cn.className="conn-note";
+      cn.textContent = inboxData.connector
+        ? (th.ask_id ? "↳ answers via flowhub connector (marks the ask answered)" : "↳ sends a message to "+th.task)
+        : "flowhub connector not installed — replies go as plain messages"+(seenHint?" · "+seenHint:"");
+      wrap.appendChild(cn);
       comp.appendChild(ta); comp.appendChild(btn); wrap.appendChild(comp);
     } else {
       const lock=document.createElement("div"); lock.className="composer-locked";

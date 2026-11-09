@@ -1,0 +1,32 @@
+#!/bin/bash
+# flow human connector (contract v1): flowhub, the local web hub.
+#
+#   run send   stdin: the ask JSON  → POST to the hub; the hub shows it in its Inbox
+#   run test   stdin: same shape, kind "test" → POST; hub answers 200, records nothing
+#
+# Stock macOS only: bash 3.2 + curl. The JSON is passed straight through as
+# the body (no token — the hub reads the connector secret from the keychain
+# itself and answers via "$FLOW_BIN" human reply|seen when you click in the UI).
+# Hub down or non-2xx → exit 1 fast, so dispatch.log is honest (and
+# `flow connector add` rolls back: install with the hub running).
+#
+# FLOWHUB_PORT (default 8787) picks the hub.
+
+verb="${1:-}"
+case "$verb" in
+send | test) ;;
+*)
+	echo "usage: run send|test  (JSON on stdin)" >&2
+	exit 2
+	;;
+esac
+
+port="${FLOWHUB_PORT:-8787}"
+code="$(curl -sS -m 2 -o /dev/null -w '%{http_code}' \
+	-H 'Content-Type: application/json' -H 'X-Flow-Connector: 1' \
+	--data-binary @- "http://127.0.0.1:${port}/api/connector/ask" 2>/dev/null)"
+case "$code" in
+2??) exit 0 ;;
+esac
+echo "flowhub not reachable on 127.0.0.1:${port} (http ${code:-none})" >&2
+exit 1

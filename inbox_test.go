@@ -160,3 +160,117 @@ func TestBuildInbox_PeerTrafficExcluded(t *testing.T) {
 		t.Fatalf("peer traffic must not create inbox threads: %+v", v.Threads)
 	}
 }
+
+// ---- mail-model columns (flow alpha.33+): seen_at / answered_at / options ----
+
+// With the new columns, unread = seen_at IS NULL, regardless of status
+// (human mail stays status=pending until answered).
+func TestBuildInbox_UnreadIsSeenAtNull(t *testing.T) {
+	msgs := []rawMessage{{
+		ID: "in1", Kind: "message", CreatedAt: "2026-11-06T10:00:00+05:30",
+		FromAssignee: "user", FromTaskSlug: "deploy", ToAssignee: "user",
+		Body: "ship?", Status: "pending", HasMail: true, SeenAt: "2026-11-06T10:01:00+05:30",
+		Options: []string{"Yes", "No"},
+	}}
+	v := buildInbox(msgs, map[string]taskMeta{"deploy": {Status: "in-progress"}})
+	th := threadFor(v, "deploy")
+	if th == nil || th.State != "owe-reply" || len(th.PendingIDs) != 0 || v.Unread != 0 {
+		t.Fatalf("seen pending ask should owe a reply, not be unread: %+v", th)
+	}
+	if th.AskID != "in1" {
+		t.Fatalf("ask id = %q", th.AskID)
+	}
+	m := th.Messages[0]
+	if !m.Seen || m.Answered || len(m.Options) != 2 || m.Options[0] != "Yes" {
+		t.Fatalf("msg fields: %+v", m)
+	}
+
+	msgs[0].SeenAt = ""
+	v = buildInbox(msgs, map[string]taskMeta{})
+	th = threadFor(v, "deploy")
+	if th.State != "unread" || len(th.PendingIDs) != 1 || th.PendingIDs[0] != "in1" {
+		t.Fatalf("unseen should be unread: %+v", th)
+	}
+}
+
+// answered_at set on the newest ask => answered, and there's no open ask.
+func TestBuildInbox_AnsweredAt(t *testing.T) {
+	msgs := []rawMessage{
+		{ID: "a1", Kind: "message", CreatedAt: "2026-11-06T10:00:00+05:30", FromAssignee: "user",
+			FromTaskSlug: "deploy", ToAssignee: "user", Body: "q1", Status: "acked", HasMail: true,
+			SeenAt: "x", AnsweredAt: "2026-11-06T10:02:00+05:30"},
+	}
+	v := buildInbox(msgs, map[string]taskMeta{})
+	th := threadFor(v, "deploy")
+	if th.State != "answered" || th.AskID != "" || !th.Messages[0].Answered {
+		t.Fatalf("answered ask: %+v", th)
+	}
+}
+
+// AskID is the NEWEST unanswered, non-fyi inbound ask.
+func TestBuildInbox_AskIDNewestUnanswered(t *testing.T) {
+	mk := func(id, at, ans string, fyi bool) rawMessage {
+		return rawMessage{ID: id, Kind: "message", CreatedAt: at, FromAssignee: "user", FromTaskSlug: "d",
+			ToAssignee: "user", Body: id, Status: "pending", HasMail: true, SeenAt: "x", AnsweredAt: ans, FYI: fyi}
+	}
+	msgs := []rawMessage{
+		mk("old", "2026-11-06T10:00:00+05:30", "", false),
+		mk("mid", "2026-11-06T10:01:00+05:30", "", false),
+		mk("fyi", "2026-11-06T10:02:00+05:30", "", true),
+		mk("done", "2026-11-06T10:03:00+05:30", "y", false),
+	}
+	th := threadFor(buildInbox(msgs, map[string]taskMeta{}), "d")
+	if th.AskID != "mid" {
+		t.Fatalf("ask id = %q, want mid", th.AskID)
+	}
+	if !th.Messages[2].FYI {
+		t.Fatal("fyi flag lost")
+	}
+}
+
+// Old schema (no seen_at column): fall back to status=='pending' for unread.
+func TestStore_OldSchemaTolerated(t *testing.T) {
+	path := seedDBWith(t, `INSERT INTO bus_messages VALUES ('o1','2026-11-06T10:00:00+05:30','message','self','a','self',NULL,'hi',0,'pending',NULL)`)
+	st, err := openStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	msgs, err := st.messages()
+	if err != nil || len(msgs) != 1 {
+		t.Fatalf("msgs=%v err=%v", msgs, err)
+	}
+	if msgs[0].HasMail {
+		t.Fatal("old schema must not claim mail columns")
+	}
+	th := threadFor(buildInbox(msgs, map[string]taskMeta{}), "a")
+	if th == nil || th.State != "unread" {
+		t.Fatalf("old schema pending should be unread: %+v", th)
+	}
+}
+
+func TestStore_ReadsMailColumns(t *testing.T) {
+	path := seedDBWith(t,
+		`ALTER TABLE bus_messages ADD COLUMN seen_at TEXT`,
+		`ALTER TABLE bus_messages ADD COLUMN answered_at TEXT`,
+		`ALTER TABLE bus_messages ADD COLUMN options TEXT`,
+		`ALTER TABLE bus_messages ADD COLUMN reply_to TEXT`,
+		`ALTER TABLE bus_messages ADD COLUMN fyi INTEGER NOT NULL DEFAULT 0`,
+		`INSERT INTO bus_messages (id,created_at,kind,from_assignee,from_task_slug,to_assignee,to_task_slug,body,urgent,status,seen_at,answered_at,options,reply_to,fyi)
+		 VALUES ('n1','2026-11-06T10:00:00+05:30','message','user','a','user',NULL,'ship?',0,'pending','s1',NULL,'["Yes","No"]',NULL,0),
+		        ('n2','2026-11-06T10:05:00+05:30','message','user',NULL,'user','a','Yes',0,'pending',NULL,NULL,NULL,'n1',1)`)
+	st, err := openStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	msgs, err := st.messages()
+	if err != nil || len(msgs) != 2 {
+		t.Fatalf("msgs=%v err=%v", msgs, err)
+	}
+	m := msgs[0]
+	if !m.HasMail || m.SeenAt != "s1" || m.AnsweredAt != "" || len(m.Options) != 2 || m.Options[1] != "No" {
+		t.Fatalf("n1 = %+v", m)
+	}
+	if msgs[1].ReplyTo != "n1" || !msgs[1].FYI {
+		t.Fatalf("n2 = %+v", msgs[1])
+	}
+}
