@@ -379,3 +379,42 @@ func TestBuildInbox_TaskReplyToPeerMailJoinsPeerThread(t *testing.T) {
 		t.Fatalf("state=%q", th.State)
 	}
 }
+
+// An agent answering a peer ask with `flow message <peer> --reply-to <ask>`
+// leaves answered_at NULL in flow; the reply row's reply_to still marks the
+// ask answered, so its option buttons must go (no ask_id) and the badge shows.
+func TestBuildInbox_PeerAskAnsweredByReplyToHasNoOpenAsk(t *testing.T) {
+	ask := peerAsk("1f55992e", "2026-11-10T10:00:00+05:30")
+	ask.Body = "did this reach you?"
+	ask.SeenAt = "2026-11-10T10:00:30+05:30"
+	r := peerReplyOut("b22f4a24", "2026-11-10T10:01:00+05:30", "1f55992e", "sent", "")
+	r.FromTaskSlug = "flow-enterprise"
+	v := buildInbox([]rawMessage{ask, r}, nil)
+	th := threadFor(v, "peer:rohit")
+	if th == nil {
+		t.Fatalf("no peer thread: %+v", v)
+	}
+	if th.AskID != "" {
+		t.Fatalf("answered ask still open: ask_id=%q", th.AskID)
+	}
+	if !th.Messages[0].Answered {
+		t.Fatalf("ask not marked answered: %+v", th.Messages[0])
+	}
+	if th.State != "answered" {
+		t.Fatalf("state=%q", th.State)
+	}
+}
+
+// Same for a task agent's ask the human answered via a reply_to row.
+func TestBuildInbox_TaskAskAnsweredByReplyToHasNoOpenAsk(t *testing.T) {
+	ask := rawMessage{ID: "a1", Kind: "message", CreatedAt: "2026-11-10T10:00:00+05:30",
+		FromAssignee: "user", FromTaskSlug: "deploy-bot", ToAssignee: "user",
+		Body: "go?", Options: []string{"Yes", "No"}, HasMail: true, SeenAt: "2026-11-10T10:00:10+05:30"}
+	r := rawMessage{ID: "r1", Kind: "message", CreatedAt: "2026-11-10T10:01:00+05:30",
+		FromAssignee: "user", ToAssignee: "user", ToTaskSlug: "deploy-bot", Body: "Yes", ReplyTo: "a1", HasMail: true}
+	v := buildInbox([]rawMessage{ask, r}, map[string]taskMeta{"deploy-bot": {Name: "D", Status: "in-progress"}})
+	th := threadFor(v, "deploy-bot")
+	if th == nil || th.AskID != "" || !th.Messages[0].Answered {
+		t.Fatalf("task ask answered by reply_to still open: %+v", th)
+	}
+}

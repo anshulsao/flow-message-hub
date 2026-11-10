@@ -114,7 +114,14 @@ func buildInbox(msgs []rawMessage, tasks map[string]taskMeta) InboxView {
 	// ids of peer mail to the human: an agent's reply to one of these
 	// (flow message <peer> --reply-to <id>) is shown in that peer's thread.
 	peerMail := map[string]bool{}
+	// ids answered by some row's reply_to: flow leaves answered_at NULL when
+	// an agent answers with `flow message <peer> --reply-to <id>`, but the
+	// ask is still answered — don't keep its option buttons up.
+	repliedTo := map[string]bool{}
 	for _, m := range msgs {
+		if m.ReplyTo != "" {
+			repliedTo[m.ReplyTo] = true
+		}
 		if m.Kind == "message" && m.ToTaskSlug == "" && canonAssignee(m.ToAssignee) == humanID && m.peerIn() {
 			peerMail[m.ID] = true
 		}
@@ -142,9 +149,10 @@ func buildInbox(msgs []rawMessage, tasks map[string]taskMeta) InboxView {
 			}
 			a := get(key)
 			unseen := m.unseen()
+			answered := m.AnsweredAt != "" || repliedTo[m.ID]
 			a.th.Messages = append(a.th.Messages, ThreadMsg{
 				ID: m.ID, Dir: "in", Body: m.Body, Status: m.Status, Urgent: m.Urgent, At: m.CreatedAt,
-				Seen: !unseen, Answered: m.AnsweredAt != "", Options: m.Options, FYI: m.FYI,
+				Seen: !unseen, Answered: answered, Options: m.Options, FYI: m.FYI,
 				Peer: m.Peer,
 			})
 			if unseen {
@@ -156,9 +164,9 @@ func buildInbox(msgs []rawMessage, tasks map[string]taskMeta) InboxView {
 					a.th.ReplyID = m.ID
 				}
 				a.lastInPd = unseen
-				a.lastInDone = m.HasMail && (m.AnsweredAt != "" || m.FYI)
+				a.lastInDone = m.HasMail && (answered || m.FYI)
 			}
-			if m.HasMail && m.AnsweredAt == "" && !m.FYI && m.CreatedAt >= a.askAt {
+			if m.HasMail && !answered && !m.FYI && m.CreatedAt >= a.askAt {
 				a.askAt = m.CreatedAt
 				a.th.AskID = m.ID
 			}
