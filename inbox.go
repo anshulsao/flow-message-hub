@@ -1,6 +1,9 @@
 package main
 
-import "sort"
+import (
+	"sort"
+	"strings"
+)
 
 // A single message inside a DM thread.
 type ThreadMsg struct {
@@ -16,11 +19,19 @@ type ThreadMsg struct {
 	Options  []string `json:"options,omitempty"`  // inbound ask: --options choices
 	FYI      bool     `json:"fyi,omitempty"`      // inbound: --fyi, no answer expected
 	ReplyTo  string   `json:"reply_to,omitempty"` // outbound: the ask it answers
+
+	From          string `json:"from,omitempty"`           // outbound sent by an agent (task slug) instead of you
+	Peer          string `json:"peer,omitempty"`           // peer-hub traffic: the other hub
+	Delivery      string `json:"delivery,omitempty"`       // outbound peer: dispatched|sent|failed
+	DeliveryError string `json:"delivery_error,omitempty"` // outbound peer: why it failed
 }
 
 // A DM thread = all traffic between you and one agent/task.
 type InboxThread struct {
-	Task       string      `json:"task"`                  // agent's task slug, or "~" for general
+	Task       string      `json:"task"`                  // task slug, "~" (general), "peer:<name>" or "connector:<name>"
+	Kind       string      `json:"kind"`                  // "task" | "general" | "peer" | "connector"
+	Peer       string      `json:"peer,omitempty"`        // peer threads: the remote hub's name
+	ReplyID    string      `json:"reply_id,omitempty"`    // peer threads: newest inbound (reply target when no open ask)
 	Name       string      `json:"name"`                  // human-readable task name
 	Repliable  bool        `json:"repliable"`             // false for general / finished agents
 	LockReason string      `json:"lock_reason,omitempty"` // why the composer is locked
@@ -66,9 +77,19 @@ func buildInbox(msgs []rawMessage, tasks map[string]taskMeta) InboxView {
 	get := func(key string) *acc {
 		a := byTask[key]
 		if a == nil {
-			th := &InboxThread{Task: key, Name: key, Repliable: true}
+			th := &InboxThread{Task: key, Name: key, Repliable: true, Kind: "task"}
 			switch {
+			case strings.HasPrefix(key, "peer:"):
+				th.Kind = "peer"
+				th.Peer = strings.TrimPrefix(key, "peer:")
+				th.Name = th.Peer + " · remote hub"
+			case strings.HasPrefix(key, connectorPrefix):
+				th.Kind = "connector"
+				th.Name = "connector " + strings.TrimPrefix(key, connectorPrefix)
+				th.Repliable = false
+				th.LockReason = "connector notice — nothing to reply to"
 			case key == "~":
+				th.Kind = "general"
 				th.Name = "general (no session)"
 				th.Repliable = false
 				th.LockReason = "general thread — no session to reply to"
@@ -90,6 +111,15 @@ func buildInbox(msgs []rawMessage, tasks map[string]taskMeta) InboxView {
 		return a
 	}
 
+	// ids of peer mail to the human: an agent's reply to one of these
+	// (flow message <peer> --reply-to <id>) is shown in that peer's thread.
+	peerMail := map[string]bool{}
+	for _, m := range msgs {
+		if m.Kind == "message" && m.ToTaskSlug == "" && canonAssignee(m.ToAssignee) == humanID && m.peerIn() {
+			peerMail[m.ID] = true
+		}
+	}
+
 	for _, m := range msgs {
 		if m.Kind != "message" {
 			continue
@@ -99,9 +129,15 @@ func buildInbox(msgs []rawMessage, tasks map[string]taskMeta) InboxView {
 		fromHuman := m.FromTaskSlug == "" && canonAssignee(m.FromAssignee) == humanID
 
 		if toHuman {
-			// inbound agent→you (or general if the sender is unbound)
+			// inbound agent→you, peer hub→you, connector notice, or general
 			key := m.FromTaskSlug
-			if key == "" {
+			switch {
+			case key != "":
+			case m.peerIn():
+				key = peerNodeID(m.Peer)
+			case isConnectorSender(m):
+				key = m.FromAssignee
+			default:
 				key = "~"
 			}
 			a := get(key)
@@ -109,12 +145,16 @@ func buildInbox(msgs []rawMessage, tasks map[string]taskMeta) InboxView {
 			a.th.Messages = append(a.th.Messages, ThreadMsg{
 				ID: m.ID, Dir: "in", Body: m.Body, Status: m.Status, Urgent: m.Urgent, At: m.CreatedAt,
 				Seen: !unseen, Answered: m.AnsweredAt != "", Options: m.Options, FYI: m.FYI,
+				Peer: m.Peer,
 			})
 			if unseen {
 				a.th.PendingIDs = append(a.th.PendingIDs, m.ID)
 			}
 			if m.CreatedAt >= a.lastIn {
 				a.lastIn = m.CreatedAt
+				if a.th.Kind == "peer" {
+					a.th.ReplyID = m.ID
+				}
 				a.lastInPd = unseen
 				a.lastInDone = m.HasMail && (m.AnsweredAt != "" || m.FYI)
 			}
@@ -124,6 +164,19 @@ func buildInbox(msgs []rawMessage, tasks map[string]taskMeta) InboxView {
 			}
 			if m.Urgent {
 				a.anyUrgent = true
+			}
+			continue
+		}
+		if m.ToTaskSlug == "" && m.peerOut() && (fromHuman || peerMail[m.ReplyTo]) {
+			// you (or an agent answering for you) → peer hub, routed out
+			// over the peer's connector
+			a := get(peerNodeID(m.Peer))
+			a.th.Messages = append(a.th.Messages, ThreadMsg{
+				ID: m.ID, Dir: "out", Body: m.Body, Status: m.Status, At: m.CreatedAt, ReplyTo: m.ReplyTo,
+				From: m.FromTaskSlug, Peer: m.Peer, Delivery: m.Delivery, DeliveryError: m.DeliveryError,
+			})
+			if m.CreatedAt >= a.lastOut {
+				a.lastOut = m.CreatedAt
 			}
 			continue
 		}

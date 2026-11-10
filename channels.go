@@ -90,6 +90,10 @@ type Event struct {
 	Body   string `json:"body"`
 	Title  string `json:"title,omitempty"`
 	Urgent bool   `json:"urgent,omitempty"`
+	// peer-hub traffic: Peer names the other hub; Delivery(+Error) on outbound.
+	Peer          string `json:"peer,omitempty"`
+	Delivery      string `json:"delivery,omitempty"`
+	DeliveryError string `json:"delivery_error,omitempty"`
 }
 
 type Thread struct {
@@ -316,6 +320,8 @@ func buildThread(t chanTask, brief string, notes []note, msgs []rawMessage, run 
 		from := m.FromTaskSlug
 		if from == "" && isHuman(m.FromAssignee) {
 			from = "you"
+		} else if from == "" {
+			from = m.FromAssignee // a peer hub or connector
 		}
 		to := m.ToTaskSlug
 		if to == "" && isHuman(m.ToAssignee) {
@@ -325,7 +331,11 @@ func buildThread(t chanTask, brief string, notes []note, msgs []rawMessage, run 
 		}
 		ts := parseT(m.CreatedAt)
 		lastMsg = later(lastMsg, ts)
-		add(ts, Event{Kind: m.Kind, From: from, To: to, Body: m.Body, Urgent: m.Urgent})
+		ev := Event{Kind: m.Kind, From: from, To: to, Body: m.Body, Urgent: m.Urgent, Peer: m.Peer}
+		if m.peerOut() {
+			ev.Delivery, ev.DeliveryError = m.Delivery, m.DeliveryError
+		}
+		add(ts, ev)
 	}
 	sort.SliceStable(evs, func(i, j int) bool { return evs[i].Time < evs[j].Time })
 

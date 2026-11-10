@@ -72,6 +72,16 @@ func main() {
 		writeJSON(w, v)
 	}))
 
+	// Peer hubs from flow's contact book (empty on a pre-peers flow.db).
+	mux.HandleFunc("/api/peers", func(w http.ResponseWriter, r *http.Request) {
+		peers, err := st.peers()
+		if err != nil {
+			httpErr(w, err)
+			return
+		}
+		writeJSON(w, peers)
+	})
+
 	// Agents you can start a conversation with = live (in-progress) sessions.
 	mux.HandleFunc("/api/agents", func(w http.ResponseWriter, r *http.Request) {
 		tasks, err := st.tasks()
@@ -202,6 +212,12 @@ func main() {
 			return
 		}
 		hub := buildHub(msgs, watches, nudges, tasks, time.Now().Format(time.RFC3339))
+		peers, err := st.peers()
+		if err != nil {
+			httpErr(w, err)
+			return
+		}
+		addPeerNodes(&hub, peers)
 		enrichLiveness(hub.Nodes, tasks) // replace stale status with real liveness
 		writeJSON(w, hub)
 	})
