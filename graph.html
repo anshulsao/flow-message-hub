@@ -1192,7 +1192,7 @@
     const msgs=document.createElement("div"); msgs.className="thread-msgs";
     th.messages.forEach(m=>{
       const b=document.createElement("div"); b.className="bubble "+m.dir+(m.urgent?" urgent":"")+(m.delivery==="failed"?" peerfail":"");
-      const who=m.dir==="in"?esc(th.kind==="peer"?th.peer+" (peer)":th.kind==="connector"?th.name:th.task):(m.peer?(m.from?esc(m.from)+" (agent)":"you")+" → "+esc(m.peer)+" (peer)":"you");
+      const who=m.dir==="in"?esc(th.kind==="peer"?th.peer+" (peer)"+(m.to_task?" → "+m.to_task+" (task)":""):th.kind==="connector"?th.name:th.task):(m.peer?(m.from?esc(m.from)+" (agent)":"you")+" → "+esc(m.peer)+" (peer)":"you");
       let extra="";
       if(m.dir==="in" && !m.seen) extra=' · <span class="tick sent">● new</span>';
       if(m.dir==="in" && m.answered) extra+=' · <span class="tag-answered">✓ answered</span>';
