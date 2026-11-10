@@ -69,7 +69,8 @@ func (s *store) messages() ([]rawMessage, error) {
 		       COALESCE(from_task_slug,''), to_assignee,
 		       COALESCE(to_task_slug,''), body, urgent, status, waited_s,
 		       ` + text("seen_at") + `, ` + text("answered_at") + `, ` + text("options") + `,
-		       ` + text("reply_to") + `, ` + fyi + `
+		       ` + text("reply_to") + `, ` + fyi + `,
+		       ` + text("peer") + `, ` + text("origin_ref") + `, ` + text("delivery") + `, ` + text("delivery_error") + `
 		FROM bus_messages
 		ORDER BY created_at`)
 	if err != nil {
@@ -85,7 +86,8 @@ func (s *store) messages() ([]rawMessage, error) {
 		if err := rows.Scan(&m.ID, &m.CreatedAt, &m.Kind, &m.FromAssignee,
 			&m.FromTaskSlug, &m.ToAssignee, &m.ToTaskSlug, &m.Body,
 			&urgent, &m.Status, &waited,
-			&m.SeenAt, &m.AnsweredAt, &opts, &m.ReplyTo, &fyiN); err != nil {
+			&m.SeenAt, &m.AnsweredAt, &opts, &m.ReplyTo, &fyiN,
+			&m.Peer, &m.OriginRef, &m.Delivery, &m.DeliveryError); err != nil {
 			return nil, err
 		}
 		m.Urgent = urgent != 0
@@ -172,6 +174,35 @@ func (s *store) tasks() (map[string]taskMeta, error) {
 			SessionID: sessionID, AutoRunStatus: autoStatus, AutoRunPID: autoPID,
 			Project: project,
 		}
+	}
+	return out, rows.Err()
+}
+
+// peers reads flow's peers table (flow peers v0), by name. An older
+// flow.db without the table yields no peers, not an error.
+func (s *store) peers() ([]Peer, error) {
+	var n int
+	if err := s.db.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type='table' AND name='peers'`).Scan(&n); err != nil {
+		return nil, err
+	}
+	out := []Peer{}
+	if n == 0 {
+		return out, nil
+	}
+	rows, err := s.db.Query(`SELECT name, COALESCE(connector,''), COALESCE(blocked,0),
+		COALESCE(created_at,''), COALESCE(last_seen_at,'') FROM peers ORDER BY name`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var p Peer
+		var blocked int
+		if err := rows.Scan(&p.Name, &p.Connector, &blocked, &p.CreatedAt, &p.LastSeenAt); err != nil {
+			return nil, err
+		}
+		p.Blocked = blocked != 0
+		out = append(out, p)
 	}
 	return out, rows.Err()
 }

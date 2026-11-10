@@ -1,6 +1,9 @@
 package main
 
-import "sort"
+import (
+	"sort"
+	"strings"
+)
 
 // ---- Raw rows read from flow.db (one struct per source table) ----
 
@@ -26,6 +29,51 @@ type rawMessage struct {
 	Options    []string
 	ReplyTo    string
 	FYI        bool
+
+	// peer-hub columns (flow peers v0); "" on older schemas.
+	Peer          string // outbound: target peer; inbound: source peer
+	OriginRef     string // inbound: the other hub's message id
+	Delivery      string // outbound: dispatched | sent | failed
+	DeliveryError string
+}
+
+// peerIn: a row another hub delivered to us (flow's IsPeerInbound, plus a
+// from-side fallback for rows missing origin_ref).
+func (m rawMessage) peerIn() bool {
+	if m.Peer == "" {
+		return false
+	}
+	return m.OriginRef != "" || (m.FromTaskSlug == "" && m.FromAssignee == m.Peer && m.ToAssignee != m.Peer)
+}
+
+// peerOut: a row addressed to another hub.
+func (m rawMessage) peerOut() bool { return m.Peer != "" && !m.peerIn() }
+
+// peerNodeID is the graph/inbox key for a peer hub. Prefixed so a peer
+// named like a local task slug can never collide with it.
+func peerNodeID(name string) string { return "peer:" + name }
+
+const connectorPrefix = "connector:"
+
+// isConnectorSender: a connector-origin human notice (from_assignee=connector:<name>).
+func isConnectorSender(m rawMessage) bool {
+	return m.FromTaskSlug == "" && strings.HasPrefix(m.FromAssignee, connectorPrefix)
+}
+
+// msgFrom / msgTo resolve a message's endpoints to node ids, folding peer
+// rows onto their remote-hub node.
+func msgFrom(m rawMessage) string {
+	if m.FromTaskSlug == "" && m.peerIn() {
+		return peerNodeID(m.Peer)
+	}
+	return nodeID(m.FromAssignee, m.FromTaskSlug)
+}
+
+func msgTo(m rawMessage) string {
+	if m.ToTaskSlug == "" && m.peerOut() {
+		return peerNodeID(m.Peer)
+	}
+	return nodeID(m.ToAssignee, m.ToTaskSlug)
 }
 
 // unseen reports whether human mail is still unread.
@@ -119,6 +167,19 @@ type Edge struct {
 	Urgent  bool    `json:"urgent,omitempty"`
 	WaitedS float64 `json:"waited_s,omitempty"`
 	At      string  `json:"at,omitempty"`
+	// Peer is set on traffic to/from another hub; Delivery (+error) on outbound.
+	Peer          string `json:"peer,omitempty"`
+	Delivery      string `json:"delivery,omitempty"`
+	DeliveryError string `json:"delivery_error,omitempty"`
+}
+
+// Peer is one row of flow's peers table: another hub in the contact book.
+type Peer struct {
+	Name       string `json:"name"`
+	Connector  string `json:"connector"`
+	Blocked    bool   `json:"blocked"`
+	CreatedAt  string `json:"created_at,omitempty"`
+	LastSeenAt string `json:"last_seen_at,omitempty"`
 }
 
 type WatchEdge struct {
@@ -155,6 +216,7 @@ type Hub struct {
 	Messages    []Edge      `json:"messages"`
 	Watches     []WatchEdge `json:"watches"`
 	Broadcasts  []Broadcast `json:"broadcasts"`
+	Peers       []Peer      `json:"peers"`
 }
 
 // humanID is the canonical node id for the local human. Flow's reserved
@@ -212,8 +274,8 @@ func buildHub(msgs []rawMessage, watches []rawWatch, nudges []rawNudge, tasks ma
 	add(humanID) // the human is always present
 
 	for _, m := range msgs {
-		add(nodeID(m.FromAssignee, m.FromTaskSlug))
-		add(nodeID(m.ToAssignee, m.ToTaskSlug))
+		add(msgFrom(m))
+		add(msgTo(m))
 	}
 	for _, w := range watches {
 		add(watcherTask(w.Watcher))
@@ -231,6 +293,14 @@ func buildHub(msgs []rawMessage, watches []rawWatch, nudges []rawNudge, tasks ma
 			n.Kind = "human"
 			n.Label = "you"
 			n.Name = "you · the human"
+		case strings.HasPrefix(id, "peer:"):
+			n.Kind = "peer"
+			n.Label = strings.TrimPrefix(id, "peer:")
+			n.Name = n.Label + " · remote hub"
+		case strings.HasPrefix(id, connectorPrefix):
+			n.Kind = "connector"
+			n.Label = strings.TrimPrefix(id, connectorPrefix)
+			n.Name = "connector " + n.Label
 		case tasks[id].Name != "":
 			n.Kind = "session"
 			n.Name = tasks[id].Name
@@ -259,12 +329,16 @@ func buildHub(msgs []rawMessage, watches []rawWatch, nudges []rawNudge, tasks ma
 		}
 		e := Edge{
 			ID:     m.ID,
-			From:   nodeID(m.FromAssignee, m.FromTaskSlug),
-			To:     nodeID(m.ToAssignee, m.ToTaskSlug),
+			From:   msgFrom(m),
+			To:     msgTo(m),
 			Body:   m.Body,
 			Status: m.Status,
 			Urgent: m.Urgent,
 			At:     m.CreatedAt,
+			Peer:   m.Peer,
+		}
+		if m.peerOut() {
+			e.Delivery, e.DeliveryError = m.Delivery, m.DeliveryError
 		}
 		if m.HasWaited {
 			e.WaitedS = m.WaitedS
@@ -289,7 +363,7 @@ func buildHub(msgs []rawMessage, watches []rawWatch, nudges []rawNudge, tasks ma
 		if m.Kind != "broadcast" {
 			continue
 		}
-		from := nodeID(m.FromAssignee, m.FromTaskSlug)
+		from := msgFrom(m)
 		key := from + "\x00" + m.CreatedAt + "\x00" + m.Body
 		b := bcastBy[key]
 		if b == nil {
@@ -348,8 +422,12 @@ func buildHub(msgs []rawMessage, watches []rawWatch, nudges []rawNudge, tasks ma
 				return 0
 			case "session":
 				return 1
-			default:
+			case "peer":
 				return 2
+			case "connector":
+				return 3
+			default:
+				return 4
 			}
 		}
 		if rank(nodes[i]) != rank(nodes[j]) {
@@ -359,11 +437,39 @@ func buildHub(msgs []rawMessage, watches []rawWatch, nudges []rawNudge, tasks ma
 	})
 
 	return Hub{
+		Peers:       []Peer{},
 		GeneratedAt: now,
 		Stats:       stats,
 		Nodes:       nodes,
 		Messages:    messages,
 		Watches:     wedges,
 		Broadcasts:  broadcasts,
+	}
+}
+
+// addPeerNodes records the peers table on the hub and gives every peer a
+// remote-hub node, including peers with no traffic yet.
+func addPeerNodes(h *Hub, peers []Peer) {
+	if peers == nil {
+		peers = []Peer{}
+	}
+	h.Peers = peers
+	for _, p := range peers {
+		id := peerNodeID(p.Name)
+		var n *Node
+		for i := range h.Nodes {
+			if h.Nodes[i].ID == id {
+				n = &h.Nodes[i]
+			}
+		}
+		if n == nil {
+			h.Nodes = append(h.Nodes, Node{ID: id, Kind: "peer", Label: p.Name})
+			h.Stats.Participants++
+			n = &h.Nodes[len(h.Nodes)-1]
+		}
+		n.Name = p.Name + " · remote hub via " + p.Connector
+		if p.Blocked {
+			n.Name += " (blocked)"
+		}
 	}
 }

@@ -157,6 +157,10 @@
   .tagk.message{background:var(--info-soft);color:var(--info);}
   .tagk.broadcast{background:rgba(126,132,242,.14);color:var(--watch);}
   .tagk.urgent{background:var(--urgent);color:#fff;}
+  .tagk.peer{background:rgba(180,140,255,.16);color:#9B6BF2;}
+  .tagk.dsent{background:var(--live-soft);color:var(--live);text-transform:none;}
+  .tagk.dwait{background:var(--hover);color:var(--muted);text-transform:none;}
+  .tagk.dfail{background:var(--urgent);color:#fff;text-transform:none;white-space:nowrap;}
   .ev .who{font-family:"IBM Plex Mono",monospace;font-size:11.5px;}
   .ev .body{font-size:13px;margin-top:3px;white-space:pre-wrap;word-break:break-word;}
   .ev .body.you{border-left:2px solid var(--accent);padding-left:8px;}
@@ -570,8 +574,13 @@
       case "note": return `<div class="ms"><span class="tagk note">note</span><details><summary>${esc(e.title)}</summary><div class="full md">${md(e.body)}</div></details>${tm}</div>`;
       default: {
         const bc = e.kind === "broadcast";
-        return `<div class="ms"><span class="tagk ${bc ? "broadcast" : "message"}">${bc ? "bcast" : "msg"}</span>${e.urgent ? `<span class="tagk urgent">urgent</span>` : ""}
-          <details><summary><span class="who">${esc(e.from || "?")} → ${esc(e.to || "?")}</span> · ${esc(firstLine(e.body))}</summary><div class="full">${esc(e.body)}</div></details>${tm}</div>`;
+        // peer-hub traffic: label the remote end "(peer)" and show outbound delivery
+        const pr = n => (e.peer && n === e.peer) ? n + " (peer)" : n;
+        const dl = !e.delivery ? "" : e.delivery === "sent" ? `<span class="tagk dsent">sent</span>`
+          : e.delivery === "failed" ? `<span class="tagk dfail" title="${esc(e.delivery_error || "")}">failed</span>`
+          : `<span class="tagk dwait">waiting</span>`;
+        return `<div class="ms"><span class="tagk ${bc ? "broadcast" : "message"}">${bc ? "bcast" : "msg"}</span>${e.peer ? `<span class="tagk peer">peer</span>` : ""}${e.urgent ? `<span class="tagk urgent">urgent</span>` : ""}
+          <details><summary><span class="who">${esc(pr(e.from || "?"))} → ${esc(pr(e.to || "?"))}</span> · ${esc(firstLine(e.body))}</summary><div class="full">${esc(e.body)}${e.delivery === "failed" && e.delivery_error ? "\n\n✕ delivery failed: " + esc(e.delivery_error) : ""}</div></details>${dl}${tm}</div>`;
       }
     }
   }

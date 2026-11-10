@@ -178,3 +178,21 @@ func (f *flowExec) Reply(taskSlug, body string) error {
 	_, err := f.run("message", humanAddr()+"/"+taskSlug, body)
 	return err
 }
+
+// PeerReply answers a peer hub's message: `flow message <peer> --reply-to
+// <id> -- "<text>"`. flow stores it as an outbound peer row and dispatches
+// it over the peer's connector with reply_to_ref = that row's origin_ref.
+// "--" keeps a body that starts with "-" from being read as a flag.
+func (f *flowExec) PeerReply(peer, id, text string) error {
+	if peer == "" || strings.ContainsAny(peer, "/ ") || canonAssignee(peer) == humanID {
+		return fmt.Errorf("bad peer %q", peer)
+	}
+	if id == "" {
+		return fmt.Errorf("no message to reply to")
+	}
+	if strings.TrimSpace(text) == "" {
+		return fmt.Errorf("empty reply")
+	}
+	_, err := f.run("message", peer, "--reply-to", id, "--", text)
+	return err
+}

@@ -153,6 +153,10 @@ func (f *fakeWriter) HumanReply(tok, id, text string) error {
 	f.calls = append(f.calls, "hreply "+tok+" "+id+" "+text)
 	return f.replyErr
 }
+func (f *fakeWriter) PeerReply(peer, id, text string) error {
+	f.calls = append(f.calls, "peer "+peer+" "+id+" "+text)
+	return nil
+}
 func (f *fakeWriter) Reply(task, text string) error {
 	f.calls = append(f.calls, "msg "+task+" "+text)
 	return nil

@@ -20,6 +20,7 @@
     --urgent:#FF5D52; --urgent-glow:rgba(255,93,82,.8);
     --crashed:#E8873B; --crashed-glow:rgba(232,135,59,.55);
     --watch:#7E84F2; --nudge:#FF5D52;
+    --peer:#B48CFF; --peer-glow:rgba(180,140,255,.5);
     --wire:#26324A;
     --shadow:0 1px 0 rgba(255,255,255,.03), 0 10px 40px rgba(0,0,0,.5);
   }
@@ -36,6 +37,7 @@
     --urgent:#DA3B2E; --urgent-glow:rgba(218,59,46,.55);
     --crashed:#B45309; --crashed-glow:rgba(180,83,9,.4);
     --watch:#5E63C9; --nudge:#DA3B2E;
+    --peer:#7C4DDB; --peer-glow:rgba(124,77,219,.35);
     --wire:#CAD4E2;
     --shadow:0 1px 2px rgba(20,30,45,.06), 0 12px 34px rgba(20,30,45,.12);
   }
@@ -311,6 +313,21 @@
   .tcard .th-chk{color:var(--acked);font-size:12px;}
   .tcard .th-urgent{color:var(--urgent);font:700 9px "IBM Plex Mono",monospace;letter-spacing:.05em;}
 
+  .th-kind{font:600 9.5px "IBM Plex Mono",monospace;letter-spacing:.04em;padding:1px 6px;border-radius:8px;white-space:nowrap;}
+  .th-kind.peer{color:var(--peer);border:1px solid color-mix(in srgb,var(--peer) 45%,transparent);}
+  .th-kind.connector{color:var(--muted);border:1px dashed var(--panel-line);}
+  .tcard.peer::before{background:var(--peer);}
+  .tcard.peer.unread::before{background:var(--wait);}
+  .dlv{font:600 9.5px "IBM Plex Mono",monospace;}
+  .dlv.sent{color:var(--acked);} .dlv.waiting{color:var(--wait);} .dlv.failed{color:var(--urgent);}
+  .bubble.out.peerfail{border-color:var(--urgent);}
+  .peers-box{border:1px solid var(--panel-line);border-radius:11px;background:var(--panel-2);padding:7px 11px;font-size:12px;color:var(--muted);}
+  .peers-box summary{cursor:pointer;font:600 11.5px "IBM Plex Mono",monospace;color:var(--ink);list-style:none;}
+  .peers-box summary::-webkit-details-marker{display:none;}
+  .peers-box table{width:100%;border-collapse:collapse;margin-top:6px;font:500 11px "IBM Plex Mono",monospace;}
+  .peers-box td,.peers-box th{text-align:left;padding:3px 4px;border-top:1px solid var(--panel-line);}
+  .peers-box th{color:var(--faint);font-weight:500;}
+  .peers-box .blk{color:var(--urgent);}
   .thread{display:grid;grid-template-rows:auto 1fr auto;min-height:0;}
   .thread-head{display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:1px solid var(--panel-line);background:var(--panel-2);}
   .thread-head .back{background:none;border:none;color:var(--muted);cursor:pointer;font-size:17px;padding:0 4px;line-height:1;}
@@ -423,7 +440,9 @@
         <div class="row"><span class="sw" style="background:var(--session);opacity:.42"></span> idle <span style="color:var(--faint)">(detached, resumable)</span></div>
         <div class="row"><span class="sw" style="background:var(--crashed)"></span> ✕ crashed run <span style="color:var(--faint)">(click for actions)</span></div>
         <div class="row"><span class="sw" style="background:var(--target);opacity:.4"></span> done</div>
+        <div class="row"><svg width="16" height="16" viewBox="-8 -8 16 16" style="flex:none"><path d="M7,0L3.5,6.06L-3.5,6.06L-7,0L-3.5,-6.06L3.5,-6.06Z" fill="var(--peer)"/></svg> peer · remote hub <span style="color:var(--faint)">(another flow home)</span></div>
         <div class="row"><span class="ln" style="border-color:var(--delivered)"></span> message</div>
+        <div class="row"><span class="ln" style="border-color:var(--peer);border-top-style:dashed"></span> peer message <span style="color:var(--faint)">(over a connector)</span></div>
         <div class="row"><span class="ln" style="border-color:var(--watch);border-top-style:dashed"></span> watch</div>
         <div class="row"><span class="ln" style="border-color:var(--watch);border-top-style:dotted"></span> broadcast</div>
         <div class="row" style="margin-top:3px;color:var(--faint)">liveness is real (pid / session), not tasks.status</div>
@@ -495,7 +514,9 @@
     .alpha(1);
   sim.on("tick", ()=>{}); // rendering handled by RAF
 
-  function rOf(n){ return n.kind==="human"?26 : n.kind==="session"?18 : 14; }
+  function rOf(n){ return n.kind==="human"?26 : n.kind==="peer"?21 : n.kind==="session"?18 : 14; }
+  // peer hubs are hexagons: a hub of its own, not one of our sessions
+  function hexPath(r){ const p=[]; for(let i=0;i<6;i++){ const a=Math.PI/3*i; p.push((r*Math.cos(a)).toFixed(2)+","+(r*Math.sin(a)).toFixed(2)); } return "M"+p.join("L")+"Z"; }
   function isDead(n){ return n.kind==="session" && n.status==="done"; } // finished agent, session won't pop
   const STALE_DAYS = 3;
   function ageDays(iso){ return iso ? (Date.now()-new Date(iso).getTime())/86400000 : Infinity; }
@@ -541,6 +562,7 @@
   function isCrashed(n){ return runOf(n)==="crashed"; }
   function colVar(n){
     if(n.kind==="human") return "--hub";
+    if(n.kind==="peer") return "--peer";
     const r=runOf(n);
     if(r==="crashed") return "--crashed";
     if(r==="done"||r==="backlog"||n.kind!=="session") return "--target";
@@ -549,6 +571,7 @@
   // opacity conveys liveness: live=full, idle=detached/dim, crashed=mid, done=faint
   function coreOpacity(n){
     if(n.kind==="human") return .95;
+    if(n.kind==="peer") return .9;
     switch(runOf(n)){
       case "live": return .92;
       case "idle": return .42;
@@ -599,7 +622,7 @@
     const prevPhase = new Map(msgEdges.map(e=>[e.id,e.phase]));
     msgEdges = hub.messages.filter(m=>nodeById.has(m.from)&&nodeById.has(m.to)).map(m=>({
       id:m.id, from:m.from, to:m.to, body:m.body, status:m.status, urgent:m.urgent,
-      waited_s:m.waited_s, at:m.at, phase: prevPhase.has(m.id)?prevPhase.get(m.id):Math.random()
+      waited_s:m.waited_s, at:m.at, peer:m.peer||"", delivery:m.delivery||"", phase: prevPhase.has(m.id)?prevPhase.get(m.id):Math.random()
     }));
 
     // broadcast fan-out edges: sender -> each watcher, one per recent target.
@@ -667,6 +690,7 @@
     msgSel = gMsg.selectAll("path.msg").data(msgEdges, d=>d.id)
       .join(en=>en.append("path").attr("class","msg").attr("fill","none").attr("stroke-linecap","round"))
       .attr("stroke",d=>msgStroke(d)).attr("stroke-width",d=>d.status==="acked"?1.6:2.2)
+      .attr("stroke-dasharray",d=>d.peer?"7 4":null)
       .attr("opacity",d=>msgOpacity(d));
 
     packetSel = gPackets.selectAll("g.pk").data(msgEdges, d=>d.id)
@@ -683,6 +707,7 @@
           const g=en.append("g").attr("class","node").style("cursor","pointer");
           g.append("circle").attr("class","ring").attr("fill","none").attr("stroke-width",2);
           g.append("circle").attr("class","core").attr("filter","url(#glow)");
+          g.append("path").attr("class","hex").attr("filter","url(#glow)").style("display","none");
           g.append("circle").attr("class","flash").attr("fill","none").attr("stroke-width",2).attr("opacity",0);
           g.append("text").attr("class","g-label").attr("text-anchor","middle");
           g.append("g").attr("class","badge").style("display","none")
@@ -708,7 +733,9 @@
       const dashed = dead || crashed;
       g.select(".ring").attr("r",rOf(d)+4).attr("stroke",c)
         .attr("opacity",crashed?.75:(dead?.5:.35)).attr("stroke-dasharray",dashed?"3 3":null);
-      g.select(".core").attr("r",rOf(d)).attr("fill",c).attr("opacity",coreOpacity(d));
+      g.select(".core").attr("r",rOf(d)).attr("fill",c).attr("opacity",coreOpacity(d)).style("display",d.kind==="peer"?"none":null);
+      g.select(".hex").style("display",d.kind==="peer"?null:"none").attr("d",hexPath(rOf(d)+2)).attr("fill",c).attr("opacity",coreOpacity(d));
+      if(d.kind==="peer") g.select(".ring").attr("stroke-dasharray","2 4");
       g.select(".flash").attr("r",rOf(d)+4).attr("stroke",c);
       g.select(".g-label").attr("y",rOf(d)+15).text(trunc(d.label,22)).attr("opacity",dead?.5:1);
       // crash marker: a small ✗ so a dead --auto run is unmistakable, and the
@@ -719,7 +746,7 @@
       const badge=g.select(".badge");
       if(d.nudge>0){ badge.style("display",null).attr("transform",`translate(${rOf(d)-2},${-rOf(d)+2})`); badge.select("text").text(d.nudge); }
       else badge.style("display","none");
-      g.style("cursor", (d.id==="user"||d.kind==="session")?"pointer":"default");
+      g.style("cursor", (d.id==="user"||d.kind==="session"||d.kind==="peer")?"pointer":"default");
     });
   }
 
@@ -728,7 +755,7 @@
   // links are grey. Kind is still read from dash style, liveness from motion.
   // All message edges are one blue regardless of status; red only for urgent;
   // grey only for dead. (Message state lives in the feed/inbox, not edge color.)
-  function statusColor(d){ return d.urgent ? "var(--urgent)" : "var(--delivered)"; }
+  function statusColor(d){ return (d.urgent||d.delivery==="failed") ? "var(--urgent)" : d.peer ? "var(--peer)" : "var(--delivered)"; }
   function wireColor(d){ return edgeDead(d.from,d.to) ? "var(--wire)" : statusColor(d); }
   function deadNode(id){ const n=nodeById.get(id); return !!(n && isDead(n)); }
   function edgeDead(a,b){ return deadNode(a)||deadNode(b); }
@@ -752,7 +779,8 @@
       : (d.name || "referenced on the bus");
     const r=runOf(d);
     const rLabel={live:"● live",idle:"◌ idle (detached)",crashed:"✕ crashed run",done:"done",backlog:"backlog"}[r]||"";
-    const hint = d.kind==="session" ? `<div class="t-meta" style="color:var(--faint)">click / right-click for actions</div>` : "";
+    const hint = d.kind==="session" ? `<div class="t-meta" style="color:var(--faint)">click / right-click for actions</div>`
+      : d.kind==="peer" ? `<div class="t-meta" style="color:var(--faint)">another flow hub · click to open its inbox thread</div>` : "";
     tipEl.innerHTML = `<div class="t-name">${d.id}</div><div class="t-desc">${desc}</div>`+
       (rLabel?`<div class="t-meta">${rLabel}${d.nudge>0?` · ${d.nudge} nudge`:""}</div>`:"")+hint;
     tipEl.classList.add("on"); moveTip(ev);
@@ -844,7 +872,8 @@
     hub.messages.forEach(m=>{
       if(!ok(m.from)||!ok(m.to)) return;
       items.push({key:"m:"+m.id, from:m.from, to:m.to, body:m.body, at:m.at,
-        waitYou: m.to==="user" && m.status==="pending", urgent:!!m.urgent});
+        waitYou: m.to==="user" && m.status==="pending", urgent:!!m.urgent,
+        peer:m.peer||"", delivery:m.delivery||"", derr:m.delivery_error||""});
     });
     (hub.broadcasts||[]).forEach(b=>{
       if(!ok(b.from)) return;
@@ -856,15 +885,24 @@
     return items.slice(-200);
   }
   function hueOf(s){ let h=0; for(const c of s) h=(h*31+c.charCodeAt(0))>>>0; return h%360; }
-  function who(id){ return id==="user"?"you":id; }
+  function who(id){ id=id||""; return id==="user"?"you":id.startsWith("peer:")?id.slice(5)+" (peer)":id; }
   function recipient(it){
     if(it.bcast!==undefined) return `📣 broadcast to ${it.bcast} watcher${it.bcast===1?"":"s"}`;
     return "→ "+who(it.to);
   }
+  // delivery state of an outbound peer message: dispatched → waiting, sent, failed (+ error)
+  function dlvInfo(state,err){
+    if(state==="sent") return {cls:"sent",txt:"✓ sent"};
+    if(state==="failed") return {cls:"failed",txt:"✕ failed"+(err?": "+err:"")};
+    if(state) return {cls:"waiting",txt:"⏳ waiting"};
+    return null;
+  }
+  // short=true (Chatter/cards) caps the error; the full text stays in the tooltip
+  function dlvTag(state,err,short){ const d=dlvInfo(state,err); if(!d) return ""; const t=short&&d.txt.length>44?d.txt.slice(0,43)+"…":d.txt; return `<span class="dlv ${d.cls}" title="${esc(d.txt)}">${esc(t)}</span>`; }
   function renderFeed(hub){
     const items=chatItems(hub);
     document.getElementById("feedcount").textContent = items.length;
-    const sig=projFilter+"|"+items.map(i=>i.key+(i.waitYou?"w":"")+(i.urgent?"u":"")).join(",");
+    const sig=projFilter+"|"+items.map(i=>i.key+(i.waitYou?"w":"")+(i.urgent?"u":"")+(i.delivery||"")).join(",");
     if(sig===chatSig){ // nothing new: just refresh relative times
       feedEl.querySelectorAll(".ch-time[data-at]").forEach(e=>e.textContent=ago(e.dataset.at));
       return;
@@ -883,7 +921,7 @@
       const to=recipient(it);
       const isNew = !chatFirst && !chatSeen.has(it.key);
       chatSeen.add(it.key);
-      const tags=(it.urgent?'<span class="ch-tag urgent">urgent</span>':"")+(it.waitYou?'<span class="ch-tag wait">waiting on you</span>':"");
+      const tags=(it.urgent?'<span class="ch-tag urgent">urgent</span>':"")+(it.waitYou?'<span class="ch-tag wait">waiting on you</span>':"")+((it.to||"").startsWith("peer:")?" "+dlvTag(it.delivery,it.derr,true):"");
       const fromYou=it.from==="user";
       const av=fromYou?"var(--hub)":`hsl(${hueOf(it.from)} 55% 45%)`;
       const title=esc(fromYou?"you (the human)":(names.get(it.from)||it.from)).replace(/"/g,"&quot;");
@@ -919,6 +957,7 @@
   function esc(s){ return (s||"").replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); }
 
   // ---------- inbox (DM threads, pop-on-seen) ----------
+  let peersOpen=false;
   let inboxData=null, activeTab="feed", openThreadTask=null, lastSig="", composeAgents=[];
   const COMPOSE="__compose__";
   // asks flow pinged the hub about (connector/flowhub) → browser notification
@@ -996,6 +1035,13 @@
   document.addEventListener("keydown",e=>{ if(e.key==="Escape") closeNodeMenu(); });
   window.addEventListener("blur",closeNodeMenu);
 
+  let peersData=[];
+  function pullPeers(){
+    fetch("/api/peers",{cache:"no-store"}).then(r=>r.json()).then(p=>{
+      peersData=Array.isArray(p)?p:[];
+      if(activeTab==="inbox" && !openThreadTask) renderInbox();
+    }).catch(()=>{});
+  }
   function pullInbox(){
     fetch("/api/inbox",{cache:"no-store"}).then(r=>r.json()).then(v=>{
       if(v.error) return;
@@ -1027,7 +1073,7 @@
 
   function sig(){
     if(!inboxData) return "x";
-    const ts=inboxData.threads.map(t=>[t.task,t.state,t.unread,t.messages.length,t.latest_at,t.ask_id||""].join(":")).join("|")+"/"+(inboxData.connector?1:0);
+    const ts=inboxData.threads.map(t=>[t.task,t.state,t.unread,t.messages.length,t.latest_at,t.ask_id||"",t.messages.map(m=>m.delivery||"").join("")].join(":")).join("|")+"/"+(inboxData.connector?1:0)+"/"+JSON.stringify(peersData);
     return activeTab+"/"+(openThreadTask||"")+"/"+ts;
   }
   function renderInbox(){
@@ -1054,20 +1100,32 @@
       pb.onclick=()=>{ Notification.requestPermission().then(()=>{ lastSig=""; renderInbox(); }); };
       list.appendChild(pb);
     }
+    if(peersData.length){
+      const pd=document.createElement("details"); pd.className="peers-box";
+      if(peersOpen) pd.open=true;
+      pd.ontoggle=()=>{ peersOpen=pd.open; };
+      pd.innerHTML=`<summary>⬡ Peers · ${peersData.length} remote hub${peersData.length===1?"":"s"}</summary>`+
+        `<table><tr><th>peer</th><th>via</th><th>last seen</th><th></th></tr>`+
+        peersData.map(p=>`<tr><td>${esc(p.name)}</td><td>${esc(p.connector)}</td><td>${p.last_seen_at?ago(p.last_seen_at):"never"}</td><td>${p.blocked?'<span class="blk">blocked</span>':""}</td></tr>`).join("")+
+        `</table>`;
+      list.appendChild(pd);
+    }
     if(!inboxData.threads.length){
       const e=document.createElement("div"); e.className="inbox-empty"; e.innerHTML="inbox zero 🎉<br>no agent is waiting on you"; list.appendChild(e);
     } else inboxData.threads.forEach(th=>{
       const last=th.messages[th.messages.length-1];
       const prevTxt=(last?(last.dir==="out"?"you: ":"")+last.body:"").replace(/\s+/g," ");
-      const prevTick=(last&&last.dir==="out")?tick(last.status)+" ":"";
+      const prevTick=(last&&last.dir==="out")?(last.peer?dlvTag(last.delivery,"")+" ":tick(last.status)+" "):"";
       let right="";
       if(th.state==="unread") right=`${th.urgent?'<span class="th-urgent">URGENT</span>':''}<span class="th-badge">${th.unread}</span>`;
       else if(th.state==="owe-reply") right=`<span class="th-star" title="you owe a reply">★</span>`;
       else if(th.state==="closed") right=`<span class="th-closed" title="closed — agent finished, can't reply">🔒</span>`;
       else right=`<span class="th-chk" title="answered">✓</span>`;
       const c=document.createElement("button");
-      c.className="tcard "+th.state;
-      c.innerHTML=`<div class="th-top"><span class="th-name">${esc(th.name)}</span><span class="th-time">${ago(th.latest_at)}</span></div>`+
+      c.className="tcard "+th.state+(th.kind==="peer"||th.kind==="connector"?" "+th.kind:"");
+      const chip=th.kind==="peer"?'<span class="th-kind peer" title="another flow hub (peer)">⬡ remote hub</span>':th.kind==="connector"?'<span class="th-kind connector" title="a notice from a connector">connector</span>':"";
+      const nm=th.kind==="peer"?th.peer:th.name;
+      c.innerHTML=`<div class="th-top"><span class="th-name">${esc(nm)}</span>${chip}<span class="th-time">${ago(th.latest_at)}</span></div>`+
                   `<div class="th-top"><span class="th-prev">${prevTick}${esc(prevTxt)}</span>${right}</div>`;
       c.onclick=()=>openThread(th.task);
       list.appendChild(c);
@@ -1127,25 +1185,27 @@
   function renderThread(th){
     const wrap=document.createElement("div"); wrap.className="thread";
     const head=document.createElement("div"); head.className="thread-head";
-    head.innerHTML=`<button class="back" title="back">‹</button><span class="tn">${esc(th.task)}</span><span class="ts">${esc(th.name)}</span>`;
+    const title=th.kind==="peer"?th.peer:th.kind==="connector"?th.name:th.task;
+    const sub=th.kind==="peer"?'<span class="th-kind peer">⬡ remote hub</span>':th.kind==="connector"?'<span class="th-kind connector">connector notice</span>':esc(th.name);
+    head.innerHTML=`<button class="back" title="back">‹</button><span class="tn">${esc(title)}</span><span class="ts">${sub}</span>`;
     head.querySelector(".back").onclick=()=>{ openThreadTask=null; lastSig=""; renderInbox(); };
     const msgs=document.createElement("div"); msgs.className="thread-msgs";
     th.messages.forEach(m=>{
-      const b=document.createElement("div"); b.className="bubble "+m.dir+(m.urgent?" urgent":"");
-      const who=m.dir==="in"?esc(th.task):"you";
+      const b=document.createElement("div"); b.className="bubble "+m.dir+(m.urgent?" urgent":"")+(m.delivery==="failed"?" peerfail":"");
+      const who=m.dir==="in"?esc(th.kind==="peer"?th.peer+" (peer)":th.kind==="connector"?th.name:th.task):(m.peer?(m.from?esc(m.from)+" (agent)":"you")+" → "+esc(m.peer)+" (peer)":"you");
       let extra="";
       if(m.dir==="in" && !m.seen) extra=' · <span class="tick sent">● new</span>';
       if(m.dir==="in" && m.answered) extra+=' · <span class="tag-answered">✓ answered</span>';
       if(m.dir==="in" && m.fyi) extra+=' · fyi';
       if(m.dir==="in" && m.options && m.options.length) extra+=' · options: '+m.options.map(esc).join(" / ");
-      if(m.dir==="out") extra=" · "+tick(m.status);
+      if(m.dir==="out") extra=" · "+(m.peer?dlvTag(m.delivery,m.delivery_error):tick(m.status));
       b.innerHTML=`${esc(m.body)}<div class="b-meta">${who} · ${ago(m.at)}${extra}</div>`;
       msgs.appendChild(b);
     });
     wrap.appendChild(head); wrap.appendChild(msgs);
     if(th.repliable){
       const comp=document.createElement("div"); comp.className="thread-composer";
-      const ta=document.createElement("textarea"); ta.placeholder="reply to "+th.task+"…"; ta.rows=1;
+      const ta=document.createElement("textarea"); ta.placeholder="reply to "+(th.kind==="peer"?th.peer+"'s hub":th.task)+"…"; ta.rows=1;
       const btn=document.createElement("button"); btn.textContent="Send";
       const send=()=>{ const t=ta.value.trim(); if(!t)return; btn.disabled=true; sendReply(th.task,t,ta,btn,msgs); };
       btn.onclick=send;
@@ -1164,7 +1224,11 @@
         wrap.appendChild(ob);
       }
       const cn=document.createElement("div"); cn.className="conn-note";
-      cn.textContent = inboxData.connector
+      cn.textContent = th.kind==="peer"
+        ? ((inboxData.connector && th.ask_id)
+            ? "↳ answers via flowhub connector — flow routes it back to "+th.peer+"'s hub"
+            : "↳ sends to "+th.peer+"'s hub over its connector (reply to its latest message)")+(!inboxData.connector&&seenHint?" · "+seenHint:"")
+        : inboxData.connector
         ? (th.ask_id ? "↳ answers via flowhub connector (marks the ask answered)" : "↳ sends a message to "+th.task)
         : "flowhub connector not installed — replies go as plain messages"+(seenHint?" · "+seenHint:"");
       wrap.appendChild(cn);
@@ -1470,6 +1534,7 @@
   loadLaunchable(); setInterval(loadLaunchable, POLL_MS*3);
   pull(); setInterval(pull, POLL_MS);
   pullInbox(); setInterval(pullInbox, POLL_MS);
+  pullPeers(); setInterval(pullPeers, 15000);
 })();
 </script>
 </body>

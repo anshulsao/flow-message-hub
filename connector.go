@@ -203,6 +203,7 @@ type humanWriter interface {
 	HumanSeen(tok, id string) error
 	HumanReply(tok, id, text string) error
 	Reply(task, text string) error
+	PeerReply(peer, id, text string) error
 }
 
 const seenHint = "install the flowhub connector to mark mail seen"
@@ -230,7 +231,40 @@ func threadSeen(w humanWriter, tok string, ids []string) (seen []string, hint st
 // reply` (marks it answered, reply_to=<ask>). With no secret, no open ask,
 // or a secret flow doesn't accept, it falls back to a plain message.
 // Returns which path was used: "connector" | "message".
+//
+// Peer threads: with the connector, `flow human reply <ask>` (flow marks it
+// answered and routes the answer to the peer); otherwise — or with no open
+// ask — `flow message <peer> --reply-to <id>` (via "peer"). Connector
+// notices and unknown peer/connector keys are refused.
 func threadReply(w humanWriter, tok string, th *InboxThread, task, text string) (string, error) {
+	if th == nil && (strings.HasPrefix(task, "peer:") || strings.HasPrefix(task, connectorPrefix)) {
+		return "", errors.New("no such thread: " + task)
+	}
+	if th != nil && th.Kind == "connector" {
+		return "", errors.New("connector notices are not repliable")
+	}
+	if th != nil && th.Kind == "peer" {
+		if tok != "" && th.AskID != "" {
+			err := w.HumanReply(tok, th.AskID, text)
+			if err == nil {
+				return "connector", nil
+			}
+			if !errors.Is(err, errNotConnector) {
+				return "", err
+			}
+		}
+		target := th.AskID
+		if target == "" {
+			target = th.ReplyID
+		}
+		if target == "" {
+			return "", errors.New("nothing from " + th.Peer + " to reply to")
+		}
+		if err := w.PeerReply(th.Peer, target, text); err != nil {
+			return "", err
+		}
+		return "peer", nil
+	}
 	if tok != "" && th != nil && th.AskID != "" {
 		err := w.HumanReply(tok, th.AskID, text)
 		if err == nil {
