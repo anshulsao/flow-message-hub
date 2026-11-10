@@ -22,6 +22,7 @@ type ThreadMsg struct {
 
 	From          string `json:"from,omitempty"`           // outbound sent by an agent (task slug) instead of you
 	Peer          string `json:"peer,omitempty"`           // peer-hub traffic: the other hub
+	ToTask        string `json:"to_task,omitempty"`        // inbound peer mail routed to a local task (not you)
 	Delivery      string `json:"delivery,omitempty"`       // outbound peer: dispatched|sent|failed
 	DeliveryError string `json:"delivery_error,omitempty"` // outbound peer: why it failed
 }
@@ -60,6 +61,15 @@ type InboxView struct {
 //	                      keyed by from_task_slug ("~" if the sender is unbound)
 //	reply    (you→agent): from unbound human (from_task_slug=="" && from_assignee is self/user)
 //	                      to a task (to_task_slug!=""), keyed by to_task_slug
+//
+//	peer     (hub→here):  inbound peer mail (m.peerIn()) is keyed "peer:<name>" —
+//	                      including mail the peer routed to a local task
+//	                      (to_task_slug set). That mail is labelled ToTask and is
+//	                      the task's to handle: it never counts as unread or as an
+//	                      open ask for you, but it keeps the peer visible and
+//	                      repliable. Outbound peer mail joins the thread when sent
+//	                      by you or when it replies (reply_to) to any inbound
+//	                      peer mail — e.g. a desk task's answer.
 //
 // Peer-to-peer traffic (both ends carry a task slug) is NOT part of the inbox.
 func buildInbox(msgs []rawMessage, tasks map[string]taskMeta) InboxView {
@@ -111,8 +121,9 @@ func buildInbox(msgs []rawMessage, tasks map[string]taskMeta) InboxView {
 		return a
 	}
 
-	// ids of peer mail to the human: an agent's reply to one of these
-	// (flow message <peer> --reply-to <id>) is shown in that peer's thread.
+	// ids of inbound peer mail (to the human or routed to a task): an agent's
+	// reply to one of these (flow message <peer> --reply-to <id>) is shown in
+	// that peer's thread.
 	peerMail := map[string]bool{}
 	// ids answered by some row's reply_to: flow leaves answered_at NULL when
 	// an agent answers with `flow message <peer> --reply-to <id>`, but the
@@ -122,7 +133,7 @@ func buildInbox(msgs []rawMessage, tasks map[string]taskMeta) InboxView {
 		if m.ReplyTo != "" {
 			repliedTo[m.ReplyTo] = true
 		}
-		if m.Kind == "message" && m.ToTaskSlug == "" && canonAssignee(m.ToAssignee) == humanID && m.peerIn() {
+		if m.Kind == "message" && m.peerIn() {
 			peerMail[m.ID] = true
 		}
 	}
@@ -133,13 +144,15 @@ func buildInbox(msgs []rawMessage, tasks map[string]taskMeta) InboxView {
 		}
 		// accept both the old "self" and new "user" (PR #94) human sentinel
 		toHuman := m.ToTaskSlug == "" && canonAssignee(m.ToAssignee) == humanID
+		// peer mail routed to a local task: shown in the peer's thread, owned by the task
+		toTask := m.ToTaskSlug != "" && m.FromTaskSlug == "" && m.peerIn()
 		fromHuman := m.FromTaskSlug == "" && canonAssignee(m.FromAssignee) == humanID
 
-		if toHuman {
-			// inbound agent→you, peer hub→you, connector notice, or general
+		if toHuman || toTask {
+			// inbound agent→you, peer hub→you (or →a task), connector notice, or general
 			key := m.FromTaskSlug
 			switch {
-			case key != "":
+			case key != "" && !toTask:
 			case m.peerIn():
 				key = peerNodeID(m.Peer)
 			case isConnectorSender(m):
@@ -150,10 +163,16 @@ func buildInbox(msgs []rawMessage, tasks map[string]taskMeta) InboxView {
 			a := get(key)
 			unseen := m.unseen()
 			answered := m.AnsweredAt != "" || repliedTo[m.ID]
+			var routedTo string
+			if toTask {
+				// the task consumes it; seen_at/answered_at are never set for
+				// the human, so don't surface it as unread or an open ask
+				routedTo, unseen = m.ToTaskSlug, false
+			}
 			a.th.Messages = append(a.th.Messages, ThreadMsg{
 				ID: m.ID, Dir: "in", Body: m.Body, Status: m.Status, Urgent: m.Urgent, At: m.CreatedAt,
 				Seen: !unseen, Answered: answered, Options: m.Options, FYI: m.FYI,
-				Peer: m.Peer,
+				Peer: m.Peer, ToTask: routedTo,
 			})
 			if unseen {
 				a.th.PendingIDs = append(a.th.PendingIDs, m.ID)
@@ -164,13 +183,13 @@ func buildInbox(msgs []rawMessage, tasks map[string]taskMeta) InboxView {
 					a.th.ReplyID = m.ID
 				}
 				a.lastInPd = unseen
-				a.lastInDone = m.HasMail && (answered || m.FYI)
+				a.lastInDone = (m.HasMail && (answered || m.FYI)) || toTask
 			}
-			if m.HasMail && !answered && !m.FYI && m.CreatedAt >= a.askAt {
+			if m.HasMail && !answered && !m.FYI && !toTask && m.CreatedAt >= a.askAt {
 				a.askAt = m.CreatedAt
 				a.th.AskID = m.ID
 			}
-			if m.Urgent {
+			if m.Urgent && !toTask {
 				a.anyUrgent = true
 			}
 			continue

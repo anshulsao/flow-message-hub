@@ -105,13 +105,78 @@ func TestBuildInbox_ConnectorNoticeIsItsOwnLockedThread(t *testing.T) {
 	}
 }
 
-// A peer's answer to one of our tasks goes to that task, not the human inbox.
-func TestBuildInbox_PeerAnswerToTaskStaysOutOfInbox(t *testing.T) {
+// A peer's answer routed to one of our tasks shows in that peer's thread,
+// labelled with the task it went to. The task owns answering it, so it is
+// neither unread nor an open ask for the human.
+func TestBuildInbox_PeerAnswerToTaskShowsInPeerThread(t *testing.T) {
 	m := peerAsk("p9", "2026-11-10T10:00:00+05:30")
-	m.ToTaskSlug, m.ReplyTo, m.Options = "deploy-bot", "o0", nil
+	m.ToTaskSlug, m.ReplyTo = "deploy-bot", "o0"
 	v := buildInbox([]rawMessage{m}, map[string]taskMeta{"deploy-bot": {Name: "D", Status: "in-progress"}})
-	if len(v.Threads) != 0 {
-		t.Fatalf("peer→task answer leaked into inbox: %+v", v.Threads)
+	if threadFor(v, "deploy-bot") != nil {
+		t.Fatalf("peer mail must not open a task thread: %+v", v.Threads)
+	}
+	th := threadFor(v, "peer:rohit")
+	if th == nil || len(th.Messages) != 1 {
+		t.Fatalf("peer→task mail missing from peer thread: %+v", v.Threads)
+	}
+	if got := th.Messages[0]; got.Dir != "in" || got.ToTask != "deploy-bot" || got.Peer != "rohit" {
+		t.Fatalf("routed-to-task label wrong: %+v", got)
+	}
+	if th.AskID != "" || th.Unread != 0 || len(th.PendingIDs) != 0 || th.State == "unread" || th.State == "owe-reply" {
+		t.Fatalf("task-routed mail must not nag the human: %+v", th)
+	}
+	if th.ReplyID != "p9" || !th.Repliable {
+		t.Fatalf("thread should stay repliable to the peer: %+v", th)
+	}
+	if v.Unread != 0 || v.Owe != 0 {
+		t.Fatalf("counters: unread=%d owe=%d", v.Unread, v.Owe)
+	}
+}
+
+// The prashant case: one reply routed to a task (2ef49059 → snabbit-optimize),
+// one mail to a desk task (87cc4e00 → peer-prashant) and the desk's answer
+// (d942ca41, reply_to 87cc4e00). All three belong in peer:prashant; the
+// task's earlier unprompted outbound mail (0261a09e) stays out.
+func TestBuildInbox_PrashantTaskRoutedMailAndDeskReply(t *testing.T) {
+	out1 := rawMessage{ID: "0261a09e", Kind: "message", CreatedAt: "2026-11-10T16:23:36+05:30",
+		FromAssignee: "user", FromTaskSlug: "snabbit-optimize", ToAssignee: "prashant",
+		Body: "please create a GCP SOW", HasMail: true, Peer: "prashant", Delivery: "sent"}
+	in1 := rawMessage{ID: "2ef49059", Kind: "message", CreatedAt: "2026-11-10T16:37:40+05:30",
+		FromAssignee: "prashant", ToAssignee: "user", ToTaskSlug: "snabbit-optimize",
+		Body: "Got it — SOW drafted", ReplyTo: "f81a5386", HasMail: true, Peer: "prashant", OriginRef: "5a766612"}
+	in2 := rawMessage{ID: "87cc4e00", Kind: "message", CreatedAt: "2026-11-10T16:46:34+05:30",
+		FromAssignee: "prashant", ToAssignee: "user", ToTaskSlug: "peer-prashant",
+		Body: "Hi Anshul! Prashant's hub is up and paired.", HasMail: true, Peer: "prashant", OriginRef: "5cadf14c"}
+	desk := rawMessage{ID: "d942ca41", Kind: "message", CreatedAt: "2026-11-10T16:46:42+05:30",
+		FromAssignee: "user", FromTaskSlug: "peer-prashant", ToAssignee: "prashant",
+		Body: "Anshul's desk here", ReplyTo: "87cc4e00", FYI: true, HasMail: true, Peer: "prashant", Delivery: "sent"}
+	tasks := map[string]taskMeta{
+		"snabbit-optimize": {Name: "S", Status: "in-progress"},
+		"peer-prashant":    {Name: "P", Status: "in-progress"},
+	}
+	v := buildInbox([]rawMessage{out1, in1, in2, desk}, tasks)
+	th := threadFor(v, "peer:prashant")
+	if th == nil {
+		t.Fatalf("no peer:prashant thread: %+v", v.Threads)
+	}
+	ids := []string{}
+	for _, m := range th.Messages {
+		ids = append(ids, m.ID)
+	}
+	if strings.Join(ids, ",") != "2ef49059,87cc4e00,d942ca41" {
+		t.Fatalf("thread messages = %v", ids)
+	}
+	if th.Messages[0].ToTask != "snabbit-optimize" || th.Messages[1].ToTask != "peer-prashant" {
+		t.Fatalf("routed-to labels: %+v", th.Messages[:2])
+	}
+	if d := th.Messages[2]; d.Dir != "out" || d.From != "peer-prashant" || d.Delivery != "sent" {
+		t.Fatalf("desk reply wrong: %+v", d)
+	}
+	if th.State != "answered" || th.ReplyID != "87cc4e00" {
+		t.Fatalf("state=%q reply_id=%q", th.State, th.ReplyID)
+	}
+	if threadFor(v, "snabbit-optimize") != nil || threadFor(v, "peer-prashant") != nil {
+		t.Fatalf("peer mail leaked into task threads: %+v", v.Threads)
 	}
 }
 
